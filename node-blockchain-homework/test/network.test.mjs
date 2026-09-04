@@ -1,7 +1,10 @@
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
+import { once } from "node:events"
+import { createServer } from "node:http"
 import test from "node:test"
 import WebSocket from "ws"
+import { poll, requestJson } from "../demo.mjs"
 import { createNode } from "../src/node.mjs"
 
 async function waitFor(predicate, message, timeoutMs = 3000) {
@@ -190,4 +193,56 @@ test("节点 CLI 启动后打印 READY", async () => {
       await new Promise((resolve) => child.once("exit", resolve))
     }
   }
+})
+
+test("节点 CLI 拒绝非法 peer", async (context) => {
+  for (const peer of ["http://127.0.0.1:3001/p2p", "not a URL"]) {
+    await context.test(peer, async () => {
+      const child = spawn(process.execPath, [
+        "src/node.mjs",
+        "--port", "0",
+        "--peer", peer,
+      ], { cwd: new URL("..", import.meta.url), stdio: ["ignore", "pipe", "pipe"] })
+      let stdout = ""
+      let stderr = ""
+      child.stdout.on("data", (chunk) => { stdout += chunk })
+      child.stderr.on("data", (chunk) => { stderr += chunk })
+
+      try {
+        const { code } = await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("非法 peer 未在 3 秒内退出")), 3000)
+          child.once("exit", (exitCode) => {
+            clearTimeout(timer)
+            resolve({ code: exitCode })
+          })
+          child.once("error", reject)
+        })
+        assert.notEqual(code, 0)
+        assert.doesNotMatch(stdout, / READY /)
+        assert.match(stderr, /启动失败/)
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGTERM")
+          await once(child, "exit")
+        }
+      }
+    })
+  }
+})
+
+test("demo 轮询不会让慢请求突破总超时", async (context) => {
+  const server = createServer((_, response) => {
+    setTimeout(() => response.end("{}"), 250)
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  context.after(() => new Promise((resolve) => server.close(resolve)))
+  const url = `http://127.0.0.1:${server.address().port}`
+  const startedAt = performance.now()
+
+  await assert.rejects(
+    poll((timeoutMs) => requestJson(url, { timeoutMs }), "慢请求", 50),
+    /慢请求 超时/
+  )
+  assert.ok(performance.now() - startedAt < 200, "轮询超出 50 ms 预算过多")
 })

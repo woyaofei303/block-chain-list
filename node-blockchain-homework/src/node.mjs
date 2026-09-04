@@ -11,6 +11,15 @@ function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+function validatePeerUrls(peers) {
+  for (const peer of peers) {
+    const url = new URL(peer)
+    if (!url.hostname || (url.protocol !== "ws:" && url.protocol !== "wss:")) {
+      throw new TypeError(`peer 必须是 ws:// 或 wss:// URL: ${peer}`)
+    }
+  }
+}
+
 function sendJson(response, statusCode, value) {
   const body = JSON.stringify(value)
   response.writeHead(statusCode, {
@@ -280,6 +289,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         peer: { type: "string", multiple: true, default: [] },
       },
     })
+    // 在监听端口前拒绝拼写错误的 peer；不可达的合法地址仍异步重连。
+    validatePeerUrls(values.peer)
     const node = createNode({
       name: values.name,
       port: Number(values.port),
