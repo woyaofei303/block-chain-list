@@ -85,6 +85,12 @@ export function mineBlock({ previousBlock, transactions, difficulty, timestamp =
     throw new TypeError("区块时间必须是非负安全整数")
   }
   if (
+    previousBlock.index >= 0 &&
+    (!Number.isSafeInteger(previousBlock.timestamp) || timestamp < previousBlock.timestamp)
+  ) {
+    throw new TypeError("区块时间不能早于前一区块")
+  }
+  if (
     !Array.isArray(transactions) ||
     !transactions.every(isValidTransaction) ||
     new Set(transactions.map((transaction) => transaction.id)).size !== transactions.length

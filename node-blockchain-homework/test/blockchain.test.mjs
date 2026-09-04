@@ -133,6 +133,15 @@ test("创世块和矿工输入保持可验证", () => {
   )
   assert.throws(
     () => mineBlock({
+      previousBlock: { index: 0, timestamp: 10, hash: "0".repeat(64) },
+      transactions: [],
+      difficulty: 1,
+      timestamp: 9,
+    }),
+    /区块时间不能早于前一区块/
+  )
+  assert.throws(
+    () => mineBlock({
       previousBlock: GENESIS_BLOCK,
       transactions: [createTransaction({ from: "alice", to: "bob", amount: 1 }, 1), {}],
       difficulty: 1,
