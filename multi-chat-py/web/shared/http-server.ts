@@ -1,3 +1,5 @@
+/** Route 共用的输入读取与错误响应适配；不包含聊天领域逻辑。 */
+
 /** 将领域错误转换为稳定的 HTTP 响应，同时隐藏未预期的内部异常。 */
 export function errorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : "请求失败"

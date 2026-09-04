@@ -1,5 +1,6 @@
 "use client"
 
+/** 全局浏览器服务端状态容器；统一只读请求的重试策略，写请求默认不重试。 */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useState } from "react"
 

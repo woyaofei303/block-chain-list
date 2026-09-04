@@ -61,6 +61,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
   const sockets = new Set()
   const pendingSockets = new Set()
   const seenBlocks = new Set(state.chain.map((block) => block.hash))
+  // 节点的 HTTP 总入口：外部操作先在这里转换为 Blockchain 状态变化，再广播给邻居。
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://127.0.0.1")
@@ -81,11 +82,13 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
         return sendJson(response, 200, { transactions: state.mempool })
       }
       if (request.method === "POST" && url.pathname === "/transactions") {
+        // 全流程 3：校验并创建交易 → 加入 mempool → 广播 TRANSACTION。
         const transaction = state.createAndAddTransaction(await readJson(request))
         broadcast("TRANSACTION", { transaction })
         return sendJson(response, 201, { transaction })
       }
       if (request.method === "POST" && url.pathname === "/mine") {
+        // 全流程 4：打包 mempool 并完成 PoW → 追加本地链 → 广播 BLOCK。
         const { block, elapsedMs } = state.minePendingTransactions()
         seenBlocks.add(block.hash)
         broadcast("BLOCK", { block })
@@ -120,6 +123,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
   }
 
   function handleMessage(socket, raw) {
+    // 全流程 5-6：P2P 消息从这里进入；边界校验通过后才交给共识层修改状态。
     let message
     try {
       message = JSON.parse(raw.toString())
@@ -208,6 +212,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
   }
 
   function attachSocket(socket) {
+    // 全流程 5：连接建立即发送 HELLO；链头不同时由消息处理流程触发完整链同步。
     sockets.add(socket)
     pendingSockets.delete(socket)
     socket.once("close", () => sockets.delete(socket))
@@ -254,6 +259,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
       return socket
     },
     async start() {
+      // 全流程 2：先监听 HTTP，再把同一个 server 升级为 /p2p WebSocket 服务。
       if (server.listening) return
       if (startPromise) return startPromise
       startPromise = new Promise((resolve, reject) => {
@@ -291,6 +297,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
       for (const peerUrl of peers) this.connect(peerUrl)
     },
     async stop() {
+      // 全流程 7：先断开 P2P，再关闭 WebSocket/HTTP，最后清空对外暴露的地址。
       for (const socket of [...sockets, ...pendingSockets]) socket.terminate()
       const closingWebSocketServer = webSocketServer
       webSocketServer = undefined
@@ -311,6 +318,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
+    // 全流程 2，节点进程入口：解析 CLI → 创建节点 → 启动服务 → 打印 READY → 等待退出信号。
     const { values } = parseArgs({
       options: {
         name: { type: "string", default: "node" },

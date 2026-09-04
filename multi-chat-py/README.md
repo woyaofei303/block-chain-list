@@ -2,6 +2,12 @@
 
 本机多轮 AI 对话客户端，提供终端版和 Web 版。Web 版使用 Next.js、Tailwind CSS 与 TanStack Query，支持会话管理、Markdown、流式回答、停止生成、失败重试，以及基于 `Last-Event-ID` 的断线续传和事件去重。
 
+## 从哪里开始读代码
+
+完整的前端发送、服务端领域编排、大模型请求、两段 SSE 解析、持久化和前台渲染
+链路见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。文档包含推荐阅读顺序、
+请求/响应示例、状态机、关键不变量和故障排查入口。
+
 ## 配置
 
 ### 密钥安全

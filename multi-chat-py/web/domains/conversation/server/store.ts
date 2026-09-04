@@ -1,3 +1,8 @@
+/**
+ * Conversation 领域的单机 JSON 仓库。
+ *
+ * 它负责会话/消息状态、请求幂等和模型上下文裁剪；不知道模型协议或 SSE 的存在。
+ */
 import { randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import path from "node:path"
@@ -285,6 +290,9 @@ export function createConversationStore(options: StoreOptions) {
         }
         if (message.status === "streaming") {
           throw new Error("回答仍在生成中")
+        }
+        if (conversation.messages.some((item) => item.status === "streaming")) {
+          throw new Error("当前会话仍有回答正在生成")
         }
         const generationId = createId()
         // 重试复用原助手消息位置，清空残缺内容，避免历史中出现两条同义回答。

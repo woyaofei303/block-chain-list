@@ -1,4 +1,14 @@
-import type { GenerationEvent, GenerationUpdate } from "../model.ts"
+/**
+ * 模型生成任务的生命周期管理器。
+ *
+ * 输入是完整模型上下文，输出同时走两条路：事件缓冲供 SSE 实时消费，聚合后的
+ * GenerationUpdate 交给 ConversationStore 持久化。这里不依赖具体模型服务。
+ */
+import type {
+  GenerationEvent,
+  GenerationUpdate,
+  ModelMessage,
+} from "../model.ts"
 
 /**
  * 单次生成的内存事件缓冲区。事件 ID 严格递增，断线客户端可用 last-id 只补拉遗漏事件。
@@ -40,7 +50,7 @@ export function createGenerationBuffer(id: string) {
 
 type GenerationManagerOptions = {
   stream: (
-    messages: Array<{ role: "user" | "assistant"; content: string }>,
+    messages: ModelMessage[],
     signal: AbortSignal
   ) => AsyncIterable<string>
   persist: (generationId: string, update: GenerationUpdate) => Promise<unknown>
@@ -56,10 +66,7 @@ export function createGenerationManager(options: GenerationManagerOptions) {
     }
   >()
 
-  function start(input: {
-    id: string
-    messages: Array<{ role: "user" | "assistant"; content: string }>
-  }) {
+  function start(input: { id: string; messages: ModelMessage[] }) {
     // 相同 generationId 重复启动时复用原任务，配合请求幂等避免并行调用模型。
     const existing = jobs.get(input.id)
     if (existing) return existing.buffer
@@ -85,7 +92,7 @@ export function createGenerationManager(options: GenerationManagerOptions) {
   async function run(
     input: {
       id: string
-      messages: Array<{ role: "user" | "assistant"; content: string }>
+      messages: ModelMessage[]
     },
     buffer: ReturnType<typeof createGenerationBuffer>,
     signal: AbortSignal

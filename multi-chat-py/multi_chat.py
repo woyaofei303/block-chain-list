@@ -1,4 +1,7 @@
-"""一个支持本地保存对话历史的 DeepSeek 多轮聊天客户端。"""
+"""独立的终端聊天入口：加载历史 -> 请求 OpenAI 兼容 SDK -> 保存完整回答。
+
+Web 版不在运行时调用本文件，只会在首次建库时读取它产生的 chat_history.json。
+"""
 
 import json
 import os

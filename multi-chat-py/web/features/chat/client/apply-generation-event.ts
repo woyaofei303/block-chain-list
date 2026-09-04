@@ -1,3 +1,4 @@
+/** 将一个已校验来源的生成事件归并到助手消息；这是 SSE 到 UI 模型的纯函数边界。 */
 import type { ChatMessage } from "../../../domains/conversation/model.ts"
 import type { GenerationEvent } from "../../../domains/generation/model.ts"
 

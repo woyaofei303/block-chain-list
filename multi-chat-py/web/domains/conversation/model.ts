@@ -1,3 +1,4 @@
+/** Conversation 领域的持久化模型，也是 API 与浏览器 Query 缓存的数据形状。 */
 export type MessageStatus = "streaming" | "completed" | "stopped" | "failed"
 
 export type ChatMessage = {

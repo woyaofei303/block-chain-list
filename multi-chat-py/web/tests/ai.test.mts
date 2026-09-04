@@ -25,3 +25,14 @@ test("parses OpenAI-compatible SSE across arbitrary network chunks", async () =>
 
   assert.deepEqual(chunks, ["你", "好"])
 })
+
+test("parses the final event when a compatible provider omits the trailing blank line", async () => {
+  const stream = new Blob([
+    'data: {"choices":[{"delta":{"content":"完整"}}]}',
+  ]).stream()
+
+  const chunks: string[] = []
+  for await (const chunk of parseOpenAiStream(stream)) chunks.push(chunk)
+
+  assert.deepEqual(chunks, ["完整"])
+})

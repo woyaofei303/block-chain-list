@@ -1,0 +1,13 @@
+{
+  "name": "pow-rsa-ecc-nodejs",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node main.mjs",
+    "test": "node --test main.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

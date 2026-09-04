@@ -1,3 +1,4 @@
+/** GET/POST /api/conversations：会话列表与新建会话的 HTTP 适配层。 */
 import { runtime as appRuntime, configuredModel } from "@/server/runtime"
 import { errorResponse } from "@/shared/http-server"
 

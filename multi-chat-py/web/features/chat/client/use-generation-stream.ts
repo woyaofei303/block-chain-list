@@ -1,5 +1,9 @@
 "use client"
 
+/**
+ * 浏览器侧生成订阅器：连接本机 SSE、断线续传、事件去重，并把 token 合并进
+ * TanStack Query 的 Conversation 详情缓存。组件只消费缓存，不直接处理 SSE。
+ */
 import { useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 

@@ -1,13 +1,16 @@
+/**
+ * OpenAI Chat Completions 兼容协议适配器。
+ *
+ * 上游：GenerationManager 传入上下文和取消信号。
+ * 下游：POST <baseUrl>/chat/completions，并把供应商 SSE 解析为纯文本增量。
+ * API Key 只在此服务端模块读取，绝不进入浏览器代码。
+ */
 import {
   fullJitterDelay,
   isRetryableStatus,
   wait,
 } from "../../../shared/retry.ts"
-
-export type ModelMessage = {
-  role: "user" | "assistant"
-  content: string
-}
+import type { ModelMessage } from "../model.ts"
 
 export type AiConfig = {
   apiKey: string
@@ -92,6 +95,11 @@ export async function* parseOpenAiStream(stream: ReadableStream<Uint8Array>) {
     // 网络分块不保证和 SSE 事件边界一致，必须缓存到空行后才能解析完整事件。
     const events = buffer.split(/\r?\n\r?\n/)
     buffer = events.pop() ?? ""
+    // 部分兼容服务关闭连接前不会补最后一个空行；连接已正常结束时仍解析尾部事件。
+    if (done && buffer) {
+      events.push(buffer)
+      buffer = ""
+    }
     for (const event of events) {
       const data = event
         .split(/\r?\n/)

@@ -110,11 +110,13 @@ async function runDemo() {
   let nodeA
   let nodeB
   try {
+    // 全流程 1-2：进入演示，准备端口并启动 node-a；READY 表示 HTTP/P2P 已可用。
     const [portA, portB] = await Promise.all([unusedPort(), unusedPort()])
     nodeA = startNode({ name: "node-a", port: portA })
     await nodeA.ready
     const httpA = `http://127.0.0.1:${portA}`
 
+    // 全流程 3-4：交易先进入 node-a 的 mempool，再由 /mine 执行 PoW 并打包进区块。
     await requestJson(`${httpA}/transactions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -124,6 +126,7 @@ async function runDemo() {
     console.log(`交易1已打包: block=${firstMine.block.index}, tx=${firstMine.block.transactions.length}`)
     console.log(`挖矿耗时: block=1, ${firstMine.miningMs.toFixed(3)} ms`)
 
+    // 全流程 5：node-b 晚加入，通过 HELLO → GET_CHAIN → CHAIN 补齐 node-a 已有区块。
     nodeB = startNode({ name: "node-b", port: portB, peer: `ws://127.0.0.1:${portA}/p2p` })
     await nodeB.ready
     const httpB = `http://127.0.0.1:${portB}`
@@ -137,6 +140,7 @@ async function runDemo() {
     const synced = await Promise.all([requestJson(`${httpA}/status`), requestJson(`${httpB}/status`)])
     console.log(`落后节点同步成功: node-a高度=${synced[0].height}, node-b高度=${synced[1].height}`)
 
+    // 全流程 6：同步完成后再提交交易，验证 TRANSACTION 能实时广播到 node-b。
     const second = await requestJson(`${httpA}/transactions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -148,6 +152,7 @@ async function runDemo() {
     )
     console.log(`交易广播成功: node-b待处理交易=${(await requestJson(`${httpB}/mempool`)).transactions.length}`)
 
+    // 全流程 6：node-a 再次挖矿，node-b 校验 BLOCK 后追加，最终两个 tipHash 相同。
     const secondMine = await requestJson(`${httpA}/mine`, { method: "POST" })
     console.log(`挖矿耗时: block=2, ${secondMine.miningMs.toFixed(3)} ms`)
     await poll(async (timeoutMs) => {
@@ -161,10 +166,12 @@ async function runDemo() {
     console.log(`新区块广播成功: node-a高度=${statusA.height}, node-b高度=${statusB.height}`)
     console.log(`两个节点链头一致: ${statusA.tipHash === statusB.tipHash}`)
   } finally {
+    // 全流程 7：成功或失败都终止子进程；子进程再关闭 WebSocket、HTTP 和所有 socket。
     await Promise.all([nodeA && stopChild(nodeA.child), nodeB && stopChild(nodeB.child)])
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // 自动演示入口：直接执行本文件才运行；被测试 import 时不会产生子进程副作用。
   await runDemo()
 }

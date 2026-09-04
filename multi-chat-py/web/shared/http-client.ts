@@ -1,3 +1,4 @@
+/** 浏览器通用 JSON 请求边界：规范化错误，并为调用者暴露可重试判定。 */
 import { isRetryableStatus } from "./retry.ts"
 
 export class ApiError extends Error {

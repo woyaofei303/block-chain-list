@@ -1,3 +1,8 @@
+/**
+ * GET/DELETE /api/generations/:id：本机生成任务的 SSE 订阅与取消入口。
+ *
+ * 这里转发的是 GenerationManager 的内部事件，不直接连接模型供应商。
+ */
 import type { GenerationEvent } from "@/domains/generation/model"
 import { runtime as appRuntime } from "@/server/runtime"
 

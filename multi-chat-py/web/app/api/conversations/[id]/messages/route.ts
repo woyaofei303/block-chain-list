@@ -1,3 +1,11 @@
+/**
+ * POST /api/conversations/:id/messages：发送消息/重试回答的 HTTP 入口。
+ *
+ * 本文件只解析和校验 HTTP 输入；业务顺序由 ChatService 决定，模型 token 走单独的
+ * GET /api/generations/:id SSE 通道返回。
+ */
+
+import type { SendMessageCommand } from "@/features/chat/contracts"
 import { runtime as appRuntime } from "@/server/runtime"
 import {
   errorResponse,
@@ -21,12 +29,10 @@ export async function POST(request: Request, context: Context) {
     const retryAssistantMessageId = body.retryAssistantMessageId
       ? requiredIdentifier(body.retryAssistantMessageId, "消息 ID")
       : null
-    const result = await appRuntime.chat.sendMessage(
-      id,
-      retryAssistantMessageId
-        ? { retryAssistantMessageId, requestKey }
-        : { content: validContent(body.content), requestKey }
-    )
+    const command: SendMessageCommand = retryAssistantMessageId
+      ? { retryAssistantMessageId, requestKey }
+      : { content: validContent(body.content), requestKey }
+    const result = await appRuntime.chat.sendMessage(id, command)
 
     return Response.json(result)
   } catch (error) {

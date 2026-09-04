@@ -214,12 +214,14 @@ export class Blockchain {
   }
 
   createAndAddTransaction(input) {
+    // 全流程 3：HTTP 只提供原始字段；共识层生成确定性 ID，再统一校验和去重。
     const transaction = createTransaction(input)
     this.addTransaction(transaction)
     return transaction
   }
 
   addTransaction(transaction) {
+    // 本地 HTTP 与远端 P2P 交易共用此入口，确保两条路径遵守相同规则。
     if (!isValidTransaction(transaction)) throw new TypeError("交易内容或 ID 无效")
     const alreadyIncluded = transactionIdsInChain(this.chain).has(transaction.id)
     const alreadyPending = this.mempool.some((item) => item.id === transaction.id)
@@ -229,6 +231,7 @@ export class Blockchain {
   }
 
   minePendingTransactions() {
+    // 全流程 4：快照当前 mempool 做 PoW；成功入链后只移除本区块包含的交易。
     const result = mineBlock({
       previousBlock: this.tip,
       transactions: this.mempool,
@@ -241,6 +244,7 @@ export class Blockchain {
   }
 
   appendBlock(block) {
+    // 全流程 6，P2P BLOCK 的落点：只接受紧接当前链头且无重复交易的有效区块。
     if (!isValidNextBlock(this.tip, block)) return false
     const included = transactionIdsInChain(this.chain)
     for (const transaction of block.transactions) {
@@ -254,6 +258,7 @@ export class Blockchain {
   }
 
   replaceChain(candidateChain) {
+    // 全流程 5，P2P CHAIN 的落点：先验证候选链，再按累计工作量决定是否替换。
     if (!isValidChain(candidateChain)) return false
     // 仅替换为累计工作量更大的有效链，避免同等或较弱链回滚本地状态。
     if (chainWork(candidateChain) <= chainWork(this.chain)) return false

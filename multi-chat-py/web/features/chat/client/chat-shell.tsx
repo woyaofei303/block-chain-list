@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Web 聊天页的客户端组合入口。
+ *
+ * 阅读顺序：查询/命令 -> 发送 Route -> ChatService -> GenerationManager ->
+ * SSE Hook -> Query 缓存 -> MessageList。完整链路见 docs/ARCHITECTURE.md。
+ */
 import { useEffect, useState } from "react"
 
 import {
@@ -7,19 +13,23 @@ import {
   useConversationCommands,
   useConversationList,
 } from "../../../domains/conversation/client/queries"
+import type { ConversationSummary } from "../../../domains/conversation/model"
 import { MessageList } from "../../../domains/conversation/ui/message-list"
 import { Sidebar } from "../../../domains/conversation/ui/sidebar"
 import { requestJson } from "../../../shared/http-client"
 import { Composer } from "./composer"
 import { useGenerationStream } from "./use-generation-stream"
+import { useSendMessage } from "./use-send-message"
 
 export function ChatShell() {
+  // 1. 仅属于界面的本地状态；会话和消息正文都以服务端数据为准。
   // undefined 表示自动选择最近会话；null 表示用户明确点了“新对话”，应显示空白页。
   const [selectedId, setSelectedId] = useState<string | null | undefined>()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [theme, setTheme] = useState<"system" | "light" | "dark">("system")
 
+  // 2. TanStack Query 管理会话服务端状态；activeId 是当前页面唯一的会话选择结果。
   const list = useConversationList()
   const conversations = list.data?.conversations ?? []
   const activeId =
@@ -29,16 +39,15 @@ export function ChatShell() {
         ? selectedId
         : (conversations[0]?.id ?? null)
   const detail = useConversation(activeId)
-  const streamingMessage = detail.data?.messages.findLast(
+  const activeGenerationMessage = detail.data?.messages.findLast(
     (message) => message.status === "streaming" && message.generationId
   )
-  const connectionError = useGenerationStream(activeId, streamingMessage)
-  const {
-    createConversation,
-    sendMessage,
-    renameConversation,
-    deleteConversation,
-  } = useConversationCommands()
+
+  // 3. POST 只启动任务；真正的 token 由这个 SSE Hook 写回当前会话缓存。
+  const connectionError = useGenerationStream(activeId, activeGenerationMessage)
+  const { createConversation, renameConversation, deleteConversation } =
+    useConversationCommands()
+  const sendMessage = useSendMessage()
 
   useEffect(() => {
     document.documentElement.classList.toggle("light", theme === "light")
@@ -70,6 +79,40 @@ export function ChatShell() {
     })
   }
 
+  function handleNew() {
+    setSelectedId(null)
+    setMobileOpen(false)
+  }
+
+  function handleSelect(id: string) {
+    setSelectedId(id)
+    setMobileOpen(false)
+  }
+
+  function handleRename(conversation: ConversationSummary) {
+    const title = window.prompt("重命名会话", conversation.title)
+    if (title && title !== conversation.title) {
+      renameConversation.mutate({ id: conversation.id, title })
+    }
+  }
+
+  function handleDelete(conversation: ConversationSummary) {
+    if (!window.confirm(`删除“${conversation.title}”？此操作无法撤销。`)) return
+    deleteConversation.mutate(conversation.id, {
+      onSuccess: () => {
+        if (conversation.id === activeId) setSelectedId(undefined)
+      },
+    })
+  }
+
+  function handleStop() {
+    if (!activeGenerationMessage?.generationId) return
+    void requestJson<void>(
+      `/api/generations/${activeGenerationMessage.generationId}`,
+      { method: "DELETE" }
+    )
+  }
+
   const visibleError =
     connectionError ??
     (list.error instanceof Error ? list.error.message : null) ??
@@ -87,29 +130,10 @@ export function ChatShell() {
         mobileOpen={mobileOpen}
         collapsed={collapsed}
         onClose={() => setMobileOpen(false)}
-        onNew={() => {
-          setSelectedId(null)
-          setMobileOpen(false)
-        }}
-        onSelect={(id) => {
-          setSelectedId(id)
-          setMobileOpen(false)
-        }}
-        onRename={(conversation) => {
-          const title = window.prompt("重命名会话", conversation.title)
-          if (title && title !== conversation.title) {
-            renameConversation.mutate({ id: conversation.id, title })
-          }
-        }}
-        onDelete={(conversation) => {
-          if (window.confirm(`删除“${conversation.title}”？此操作无法撤销。`)) {
-            deleteConversation.mutate(conversation.id, {
-              onSuccess: () => {
-                if (conversation.id === activeId) setSelectedId(undefined)
-              },
-            })
-          }
-        }}
+        onNew={handleNew}
+        onSelect={handleSelect}
+        onRename={handleRename}
+        onDelete={handleDelete}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center justify-between px-3 sm:px-5">
@@ -168,21 +192,16 @@ export function ChatShell() {
         <MessageList
           conversation={activeId ? detail.data : null}
           loading={Boolean(activeId && detail.isPending)}
-          retrying={sendMessage.isPending}
+          retryDisabled={
+            sendMessage.isPending || Boolean(activeGenerationMessage)
+          }
           onRetry={handleRetry}
         />
         <Composer
           sending={sendMessage.isPending || createConversation.isPending}
-          streaming={Boolean(streamingMessage)}
+          streaming={Boolean(activeGenerationMessage)}
           onSend={handleSend}
-          onStop={() => {
-            if (streamingMessage?.generationId) {
-              void requestJson<void>(
-                `/api/generations/${streamingMessage.generationId}`,
-                { method: "DELETE" }
-              )
-            }
-          }}
+          onStop={handleStop}
         />
       </main>
     </div>

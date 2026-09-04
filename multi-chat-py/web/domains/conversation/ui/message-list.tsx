@@ -1,5 +1,6 @@
 "use client"
 
+/** Conversation 的只读渲染层；Markdown 在这里变成安全的 React 节点。 */
 import {
   isValidElement,
   type ReactNode,
@@ -15,14 +16,14 @@ import type { ChatMessage, Conversation } from "../model.ts"
 type MessageListProps = {
   conversation: Conversation | null | undefined
   loading: boolean
-  retrying: boolean
+  retryDisabled: boolean
   onRetry: (messageId: string) => void
 }
 
 export function MessageList({
   conversation,
   loading,
-  retrying,
+  retryDisabled,
   onRetry,
 }: MessageListProps) {
   const container = useRef<HTMLDivElement>(null)
@@ -57,7 +58,7 @@ export function MessageList({
             <Message
               key={message.id}
               message={message}
-              retrying={retrying}
+              retryDisabled={retryDisabled}
               onRetry={onRetry}
             />
           ))}
@@ -69,11 +70,11 @@ export function MessageList({
 
 function Message({
   message,
-  retrying,
+  retryDisabled,
   onRetry,
 }: {
   message: ChatMessage
-  retrying: boolean
+  retryDisabled: boolean
   onRetry: (id: string) => void
 }) {
   const [copied, setCopied] = useState(false)
@@ -148,7 +149,7 @@ function Message({
                 type="button"
                 className="rounded-lg border border-[var(--border)] px-2.5 py-1 transition hover:bg-[var(--hover)] hover:text-[var(--text)]"
                 onClick={() => onRetry(message.id)}
-                disabled={retrying}
+                disabled={retryDisabled}
               >
                 重试
               </button>

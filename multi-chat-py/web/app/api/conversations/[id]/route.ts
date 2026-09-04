@@ -1,3 +1,4 @@
+/** GET/PATCH/DELETE /api/conversations/:id：会话详情、改名和删除的 HTTP 适配层。 */
 import { runtime as appRuntime } from "@/server/runtime"
 import { errorResponse, readJsonObject } from "@/shared/http-server"
 

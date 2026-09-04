@@ -1,24 +1,19 @@
 "use client"
 
+/**
+ * Conversation 领域的浏览器数据入口。
+ *
+ * 这里把会话 CRUD 包装成 Query/Mutation，并负责失效缓存；跨领域的“发送消息”
+ * 单独位于 features/chat/client/use-send-message.ts。
+ */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import {
-  isRetryableClientError,
-  requestJson,
-} from "../../../shared/http-client"
-import { fullJitterDelay } from "../../../shared/retry"
+import { requestJson } from "../../../shared/http-client"
 import type { Conversation, ConversationSummary } from "../model"
 
 type ConversationList = {
   model: string
   conversations: ConversationSummary[]
-}
-
-export type SendMessageInput = {
-  conversationId: string
-  content?: string
-  retryAssistantMessageId?: string
-  requestKey: string
 }
 
 export const conversationKeys = {
@@ -49,25 +44,6 @@ export function useConversationCommands() {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: conversationKeys.all }),
   })
-  const sendMessage = useMutation({
-    mutationFn: (input: SendMessageInput) =>
-      requestJson<unknown>(
-        `/api/conversations/${input.conversationId}/messages`,
-        { method: "POST", body: JSON.stringify(input) }
-      ),
-    // 同一次 Mutation 重试时 input 不变，服务端可用 requestKey 幂等去重。
-    retry: (failureCount, error) =>
-      failureCount < 2 && isRetryableClientError(error),
-    retryDelay: (attempt) => fullJitterDelay(attempt),
-    onSuccess: async (_result, input) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: conversationKeys.all }),
-        queryClient.invalidateQueries({
-          queryKey: conversationKeys.detail(input.conversationId),
-        }),
-      ])
-    },
-  })
   const renameConversation = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) =>
       requestJson<Conversation>(`/api/conversations/${id}`, {
@@ -88,7 +64,6 @@ export function useConversationCommands() {
 
   return {
     createConversation,
-    sendMessage,
     renameConversation,
     deleteConversation,
   }

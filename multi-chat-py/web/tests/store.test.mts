@@ -120,6 +120,38 @@ test("retry replaces a partial assistant answer instead of appending", async () 
   })
 })
 
+test("does not retry an old answer while the conversation is generating", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "multi-chat-"))
+  let nextId = 0
+  const store = createConversationStore({
+    storePath: path.join(directory, "chat-store.json"),
+    legacyPath: path.join(directory, "missing-history.json"),
+    now: () => "2026-09-03T00:00:00.000Z",
+    createId: () => `id-${++nextId}`,
+  })
+  const conversation = await store.createConversation()
+  const oldTurn = await store.addUserTurn(conversation.id, {
+    content: "旧问题",
+    requestKey: "request-1",
+    model: "test-model",
+  })
+  await store.updateAssistant(oldTurn.generationId, { status: "failed" })
+  await store.addUserTurn(conversation.id, {
+    content: "新问题",
+    requestKey: "request-2",
+    model: "test-model",
+  })
+
+  await assert.rejects(
+    store.retryAssistant(conversation.id, {
+      assistantMessageId: oldTurn.assistantMessageId,
+      requestKey: "request-3",
+      model: "test-model",
+    }),
+    /当前会话仍有回答正在生成/
+  )
+})
+
 test("marks an interrupted generation as failed after restart", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "multi-chat-"))
   const storePath = path.join(directory, "chat-store.json")

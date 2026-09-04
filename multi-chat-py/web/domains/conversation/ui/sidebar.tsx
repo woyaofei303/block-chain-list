@@ -1,3 +1,4 @@
+/** ConversationSummary 的导航视图；所有写操作通过回调交还 ChatShell 编排。 */
 import type { ConversationSummary } from "../model.ts"
 
 type SidebarProps = {

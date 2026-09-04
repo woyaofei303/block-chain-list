@@ -1,5 +1,9 @@
 import "server-only"
 
+/**
+ * 服务端组合根：在唯一地点创建 Store、模型适配器、GenerationManager 和 ChatService。
+ * Route 只使用组装后的 runtime，不自行 new 领域对象或读取 API Key。
+ */
 import path from "node:path"
 
 import { createConversationStore } from "../domains/conversation/server/store.ts"
