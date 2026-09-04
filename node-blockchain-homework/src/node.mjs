@@ -30,6 +30,12 @@ async function readJson(request) {
 export function createNode({ name = "node", port = 0, difficulty, logger } = {}) {
   const state = new Blockchain({ difficulty })
   let httpUrl
+  let startPromise
+  const log = (method, value) => {
+    try {
+      logger?.[method]?.(value)
+    } catch {}
+  }
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://127.0.0.1")
@@ -61,7 +67,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger } = {})
       if (error instanceof SyntaxError || error instanceof TypeError || error instanceof RangeError) {
         return sendJson(response, 400, { error: error.message })
       }
-      logger?.error?.(error)
+      log("error", error)
       return sendJson(response, 500, { error: "服务器内部错误" })
     }
   })
@@ -72,19 +78,46 @@ export function createNode({ name = "node", port = 0, difficulty, logger } = {})
       return httpUrl
     },
     async start() {
-      await new Promise((resolve, reject) => {
-        server.once("error", reject)
-        server.listen(port, "127.0.0.1", () => {
-          server.off("error", reject)
+      if (server.listening) return
+      if (startPromise) return startPromise
+      startPromise = new Promise((resolve, reject) => {
+        const cleanup = () => {
+          server.off("error", onError)
+          server.off("listening", onListening)
+        }
+        const onError = (error) => {
+          cleanup()
+          reject(error)
+        }
+        const onListening = () => {
+          cleanup()
           resolve()
-        })
+        }
+        server.once("error", onError)
+        server.once("listening", onListening)
+        try {
+          server.listen(port, "127.0.0.1")
+        } catch (error) {
+          cleanup()
+          reject(error)
+        }
       })
+      try {
+        await startPromise
+      } finally {
+        startPromise = undefined
+      }
       // 端口为 0 时由系统分配，监听后才能读取实际地址。
       httpUrl = `http://127.0.0.1:${server.address().port}`
-      logger?.info?.(`HTTP 节点 ${name} 已启动：${httpUrl}`)
+      log("info", `HTTP 节点 ${name} 已启动：${httpUrl}`)
     },
     async stop() {
+      if (!server.listening) {
+        httpUrl = undefined
+        return
+      }
       await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+      httpUrl = undefined
     },
   }
 }

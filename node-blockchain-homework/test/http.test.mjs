@@ -56,3 +56,45 @@ test("HTTP API 拒绝错误 JSON 和未知路由", async (context) => {
   const missing = await request(`${node.httpUrl}/missing`)
   assert.equal(missing.status, 404)
 })
+
+test("HTTP 节点可重复启停且停止后不保留地址", async () => {
+  const node = createNode({ port: 0, difficulty: 1, logger: null })
+  await node.start()
+  const url = node.httpUrl
+  try {
+    for (let index = 0; index < 11; index += 1) await node.start()
+    assert.equal(node.httpUrl, url)
+  } finally {
+    await node.stop()
+  }
+  assert.equal(node.httpUrl, undefined)
+  for (let index = 0; index < 11; index += 1) await node.stop()
+})
+
+test("logger 抛错不影响节点启动或 500 响应", async (context) => {
+  const node = createNode({
+    port: 0,
+    difficulty: 1,
+    logger: {
+      info() {
+        throw new Error("日志启动失败")
+      },
+      error() {
+        throw new Error("日志错误失败")
+      },
+    },
+  })
+  await node.start()
+  context.after(() => node.stop())
+  assert.equal((await request(`${node.httpUrl}/status`)).status, 200)
+
+  node.state.minePendingTransactions = () => {
+    throw new Error("挖矿异常")
+  }
+  const response = await request(`${node.httpUrl}/mine`, {
+    method: "POST",
+    signal: AbortSignal.timeout(1_000),
+  })
+  assert.equal(response.status, 500)
+  assert.equal(response.body.error, "服务器内部错误")
+})
