@@ -14,7 +14,7 @@ HTTP 是用户操作面：提交交易、挖矿、查看状态；WebSocket (`/p2
 
 交易为 `{ id, from, to, amount, timestamp }`：`from`/`to` 是非空字符串，`amount` 为正的有限数字；`id` 是规范化交易内容的 SHA-256，用于去重。
 
-区块为 `{ index, timestamp, transactions, previousHash, difficulty, nonce, hash }`：`hash` 覆盖其余全部字段，`previousHash` 连接上一区块，`nonce` 递增到哈希满足 `difficulty` 个十六进制前导零。默认难度是 4。
+区块为 `{ index, timestamp, transactions, previousHash, difficulty, nonce, hash }`：`hash` 覆盖其余全部字段，`previousHash` 连接上一区块，`nonce` 递增到哈希满足 `difficulty` 个十六进制前导零。默认难度是 4；每个节点启动后使用固定难度，不做动态难度调整，也不收取交易手续费。
 
 ## 安装、测试与自动演示
 
@@ -25,6 +25,8 @@ npm run demo
 ```
 
 CLI 支持 `--name`、`--port`、`--difficulty` 与可重复的 `--peer`。启动成功后会在 stdout 打印 `READY`；挖矿、验块和同步耗时打印到 stderr，便于脚本稳定读取 READY。
+
+程序化调用 `createNode()` 时，每次 `start()` 或 `stop()` 都必须按顺序 `await` 完成，不要并发重叠生命周期操作。
 
 ## 三终端手动演练
 
@@ -48,7 +50,7 @@ node src/node.mjs --name node-a --port 3001 --difficulty 4
 node src/node.mjs --name node-b --port 3002 --difficulty 4 --peer ws://127.0.0.1:3001/p2p
 ```
 
-另开一个终端提交交易、挖矿并查看 node-b：
+回到终端 1 提交交易、挖矿并查看 node-b：
 
 ```bash
 curl -s -X POST http://127.0.0.1:3001/transactions \
@@ -76,7 +78,8 @@ node --inspect-brk src/node.mjs --name node-a --port 3001 --difficulty 2
 ## 有意保留的教学简化
 
 - 所有数据只在内存中；重启从确定性创世块开始。
-- 没有钱包、私钥、签名、余额、UTXO、Gas、合约、奖励或经济机制。
+- 没有钱包、私钥、签名、余额、UTXO、Gas、合约、手续费、奖励或经济机制。
+- 每个节点的难度在启动时固定，没有动态难度调整。
 - PoW 在主线程同步运行；难度较低，适合观察，但会短暂阻塞节点。
 - 同步直接传整条链，没有区块头、分批下载、Merkle Tree 或二进制编码。
 - 没有节点发现、NAT 穿透、数据库和生产级抗攻击保护。

@@ -5,6 +5,7 @@ import { createServer } from "node:http"
 import test from "node:test"
 import WebSocket from "ws"
 import { poll, requestJson } from "../demo.mjs"
+import { createTransaction } from "../src/blockchain.mjs"
 import { createNode } from "../src/node.mjs"
 
 async function waitFor(predicate, message, timeoutMs = 3000) {
@@ -96,6 +97,41 @@ test("P2P 拒绝无效链", async (context) => {
   await new Promise((resolve) => setTimeout(resolve, 50))
 
   assert.equal(node.state.chain.at(-1).hash, originalTip)
+})
+
+test("P2P 记录坏消息并在同一连接继续接收有效交易", async (context) => {
+  const errors = []
+  const node = createNode({
+    name: "message-test",
+    port: 0,
+    difficulty: 1,
+    logger: { error: (value) => errors.push(String(value)) },
+  })
+  await node.start()
+  context.after(() => node.stop())
+  const socket = await openSocket(node.p2pUrl)
+  context.after(() => socket.close())
+
+  socket.send("{")
+  socket.send(JSON.stringify(null))
+  socket.send(JSON.stringify({ type: "UNKNOWN", data: {} }))
+  socket.send(JSON.stringify({ type: "GET_CHAIN", data: null }))
+  socket.send(JSON.stringify({ type: "TRANSACTION", data: { transaction: null } }))
+  const transaction = createTransaction({ from: "alice", to: "bob", amount: 1 }, 1)
+  socket.send(JSON.stringify({ type: "TRANSACTION", data: { transaction } }))
+
+  await waitFor(
+    () => node.state.mempool.some((item) => item.id === transaction.id),
+    "坏消息后未接收有效交易"
+  )
+  assert.deepEqual(errors, [
+    "拒绝 P2P 消息：JSON 无效",
+    "拒绝 P2P 消息：消息必须是对象",
+    "拒绝 P2P 消息：未知 type",
+    "拒绝 P2P 消息：data 必须是对象",
+    "拒绝 P2P 消息：TRANSACTION data.transaction 无效",
+  ])
+  assert.deepEqual(node.state.mempool, [transaction])
 })
 
 test("中继节点同步后通知下游节点拉取链", async (context) => {

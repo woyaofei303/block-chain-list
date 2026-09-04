@@ -37,8 +37,54 @@ test("HTTP API 提交交易并挖矿", async (context) => {
   const chain = await request(`${node.httpUrl}/chain`)
   const status = await request(`${node.httpUrl}/status`)
   assert.equal(chain.body.chain.length, 2)
-  assert.equal(status.body.height, 1)
-  assert.equal(status.body.pendingTransactions, 0)
+  assert.deepEqual(status.body, {
+    name: "http-test",
+    port: Number(new URL(node.httpUrl).port),
+    height: 1,
+    tipHash: mined.body.block.hash,
+    pendingTransactions: 0,
+    peers: 0,
+  })
+})
+
+test("GET /mempool 返回尚未打包的交易", async (context) => {
+  const node = createNode({ port: 0, difficulty: 1, logger: null })
+  await node.start()
+  context.after(() => node.stop())
+
+  const accepted = await request(`${node.httpUrl}/transactions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ from: "alice", to: "bob", amount: 10 }),
+  })
+  const mempool = await request(`${node.httpUrl}/mempool`)
+
+  assert.equal(mempool.status, 200)
+  assert.deepEqual(mempool.body.transactions, [accepted.body.transaction])
+})
+
+test("HTTP 请求体边界为 64 KiB", async (context) => {
+  const node = createNode({ port: 0, difficulty: 1, logger: null })
+  await node.start()
+  context.after(() => node.stop())
+
+  const json = JSON.stringify({ from: "alice", to: "bob", amount: 10 })
+  const body64KiB = json + " ".repeat(64 * 1024 - Buffer.byteLength(json))
+  const accepted = await request(`${node.httpUrl}/transactions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: body64KiB,
+  })
+  assert.equal(Buffer.byteLength(body64KiB), 64 * 1024)
+  assert.equal(accepted.status, 201)
+
+  const oversized = await request(`${node.httpUrl}/transactions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: `${body64KiB} `,
+  })
+  assert.equal(oversized.status, 400)
+  assert.deepEqual(oversized.body, { error: "请求体不能超过 64 KiB" })
 })
 
 test("HTTP API 拒绝错误 JSON 和未知路由", async (context) => {

@@ -57,6 +57,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
       void Promise.resolve(logger?.[method]?.(value)).catch(() => {})
     } catch {}
   }
+  const rejectP2pMessage = (reason) => log("error", `拒绝 P2P 消息：${reason}`)
   const sockets = new Set()
   const pendingSockets = new Set()
   const seenBlocks = new Set(state.chain.map((block) => block.hash))
@@ -66,6 +67,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
       if (request.method === "GET" && url.pathname === "/status") {
         return sendJson(response, 200, {
           name,
+          port: server.address().port,
           height: state.chain.length - 1,
           tipHash: state.tip.hash,
           pendingTransactions: state.mempool.length,
@@ -118,18 +120,33 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
   }
 
   function handleMessage(socket, raw) {
+    let message
     try {
-      const message = JSON.parse(raw.toString())
-      if (
-        !isRecord(message) ||
-        typeof message.type !== "string" ||
-        !MESSAGE_TYPES.has(message.type) ||
-        !isRecord(message.data)
-      ) return
+      message = JSON.parse(raw.toString())
+    } catch {
+      rejectP2pMessage("JSON 无效")
+      return
+    }
+    if (!isRecord(message)) {
+      rejectP2pMessage("消息必须是对象")
+      return
+    }
+    if (typeof message.type !== "string" || !MESSAGE_TYPES.has(message.type)) {
+      rejectP2pMessage("未知 type")
+      return
+    }
+    if (!isRecord(message.data)) {
+      rejectP2pMessage("data 必须是对象")
+      return
+    }
 
+    try {
       switch (message.type) {
         case "HELLO":
-          if (typeof message.data.tipHash !== "string") return
+          if (typeof message.data.tipHash !== "string") {
+            rejectP2pMessage("HELLO data.tipHash 无效")
+            return
+          }
           // 握手只比较链头；不一致时由落后节点主动索取完整链。
           if (message.data.tipHash !== state.tip.hash) send(socket, "GET_CHAIN")
           break
@@ -137,7 +154,10 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
           send(socket, "CHAIN", { chain: state.chain })
           break
         case "CHAIN": {
-          if (!Array.isArray(message.data.chain)) return
+          if (!Array.isArray(message.data.chain)) {
+            rejectP2pMessage("CHAIN data.chain 无效")
+            return
+          }
           const startedAt = performance.now()
           // 接收方复用共识层校验，只接受累计工作量更大的完整链。
           const replaced = state.replaceChain(message.data.chain)
@@ -153,14 +173,21 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
           break
         }
         case "TRANSACTION":
-          if (!isRecord(message.data.transaction)) return
+          if (!isRecord(message.data.transaction)) {
+            rejectP2pMessage("TRANSACTION data.transaction 无效")
+            return
+          }
           if (state.addTransaction(message.data.transaction)) {
             broadcast("TRANSACTION", message.data, socket)
           }
           break
         case "BLOCK": {
           const block = message.data.block
-          if (!isRecord(block) || typeof block.hash !== "string" || seenBlocks.has(block.hash)) break
+          if (!isRecord(block) || typeof block.hash !== "string") {
+            rejectP2pMessage("BLOCK data.block 无效")
+            break
+          }
+          if (seenBlocks.has(block.hash)) break
           const startedAt = performance.now()
           const accepted = state.appendBlock(block)
           log("info", `验块=${accepted}, 耗时=${(performance.now() - startedAt).toFixed(3)} ms`)
@@ -168,12 +195,15 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
             seenBlocks.add(block.hash)
             broadcast("BLOCK", message.data, socket)
           }
-          else send(socket, "GET_CHAIN")
+          else {
+            rejectP2pMessage("BLOCK 校验失败")
+            send(socket, "GET_CHAIN")
+          }
           break
         }
       }
     } catch (error) {
-      log("error", error)
+      rejectP2pMessage(error instanceof Error ? error.message : String(error))
     }
   }
 
@@ -289,7 +319,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         peer: { type: "string", multiple: true, default: [] },
       },
     })
-    // 在监听端口前拒绝拼写错误的 peer；不可达的合法地址仍异步重连。
+    // 在监听端口前拒绝拼写错误的 peer；不可达的合法地址会异步连接并记录错误。
     validatePeerUrls(values.peer)
     const node = createNode({
       name: values.name,

@@ -1,8 +1,19 @@
 import { createHash } from "node:crypto"
 import { performance } from "node:perf_hooks"
+import { isDeepStrictEqual } from "node:util"
 
 const ZERO_HASH = "0".repeat(64)
 const MAX_DIFFICULTY = 6
+const TRANSACTION_KEYS = ["id", "from", "to", "amount", "timestamp"]
+const BLOCK_KEYS = [
+  "index",
+  "timestamp",
+  "transactions",
+  "previousHash",
+  "difficulty",
+  "nonce",
+  "hash",
+]
 
 export function sha256Hex(text) {
   return createHash("sha256").update(text, "utf8").digest("hex")
@@ -32,6 +43,7 @@ export function createTransaction({ from, to, amount }, timestamp = Date.now()) 
 }
 
 function isValidTransaction(transaction) {
+  if (!hasExactKeys(transaction, TRANSACTION_KEYS)) return false
   try {
     const recreated = createTransaction(transaction, transaction.timestamp)
     return recreated.id === transaction.id
@@ -132,12 +144,18 @@ function isBlockRecord(block) {
   return typeof block === "object" && block !== null && !Array.isArray(block)
 }
 
+function hasExactKeys(value, expectedKeys) {
+  if (!isBlockRecord(value)) return false
+  const keys = Reflect.ownKeys(value)
+  return keys.length === expectedKeys.length && expectedKeys.every((key) => Object.hasOwn(value, key))
+}
+
 function isHash(value) {
   return typeof value === "string" && /^[0-9a-f]{64}$/.test(value)
 }
 
 function isValidNextBlock(previousBlock, block) {
-  if (!isBlockRecord(previousBlock) || !isBlockRecord(block)) return false
+  if (!isBlockRecord(previousBlock) || !hasExactKeys(block, BLOCK_KEYS)) return false
   if (!Number.isSafeInteger(block.index) || block.index !== previousBlock.index + 1) return false
   if (!Number.isSafeInteger(block.timestamp) || block.timestamp < previousBlock.timestamp) return false
   if (!Array.isArray(block.transactions) || !block.transactions.every(isValidTransaction)) return false
@@ -153,7 +171,7 @@ function isValidNextBlock(previousBlock, block) {
 
 export function isValidChain(chain) {
   if (!Array.isArray(chain) || chain.length === 0) return false
-  if (JSON.stringify(chain[0]) !== JSON.stringify(GENESIS_BLOCK)) return false
+  if (!isDeepStrictEqual(chain[0], GENESIS_BLOCK)) return false
 
   const transactionIds = new Set()
   for (let index = 1; index < chain.length; index += 1) {

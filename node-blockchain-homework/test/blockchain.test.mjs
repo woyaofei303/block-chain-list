@@ -53,10 +53,13 @@ test("篡改已入块交易会破坏整条链", () => {
 
 test("只采用累计工作量更大的有效链", () => {
   const local = new Blockchain({ difficulty: 1 })
-  const remote = new Blockchain({ difficulty: 1 })
+  local.minePendingTransactions()
+  local.minePendingTransactions()
+  const remote = new Blockchain({ difficulty: 2 })
   remote.createAndAddTransaction({ from: "alice", to: "bob", amount: 1 })
   remote.minePendingTransactions()
 
+  assert.ok(remote.chain.length < local.chain.length)
   assert.ok(chainWork(remote.chain) > chainWork(local.chain))
   assert.equal(local.replaceChain(remote.chain), true)
   assert.equal(local.chain.at(-1).hash, remote.chain.at(-1).hash)
@@ -64,6 +67,29 @@ test("只采用累计工作量更大的有效链", () => {
   const invalid = structuredClone(remote.chain)
   invalid[1].previousHash = "f".repeat(64)
   assert.equal(local.replaceChain(invalid), false)
+})
+
+test("拒绝交易或普通区块中的未知字段", () => {
+  const blockchain = new Blockchain({ difficulty: 1 })
+  const transaction = createTransaction({ from: "alice", to: "bob", amount: 1 }, 1)
+  const { block } = mineBlock({
+    previousBlock: blockchain.tip,
+    transactions: [transaction],
+    difficulty: 1,
+    timestamp: 1,
+  })
+
+  assert.throws(() => blockchain.addTransaction({ ...transaction, memo: "未参与 ID" }), /交易/)
+  assert.equal(blockchain.appendBlock({ ...block, note: "未参与哈希" }), false)
+  const transactionTampered = structuredClone(block)
+  transactionTampered.transactions[0].memo = "未参与哈希"
+  assert.equal(blockchain.appendBlock(transactionTampered), false)
+})
+
+test("创世块字段顺序不影响语义校验", () => {
+  const reorderedGenesis = Object.fromEntries(Object.entries(GENESIS_BLOCK).reverse())
+
+  assert.equal(isValidChain([reorderedGenesis]), true)
 })
 
 test("拒绝无效交易并对重复交易去重", () => {
