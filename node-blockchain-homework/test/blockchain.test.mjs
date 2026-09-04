@@ -5,7 +5,9 @@ import {
   calculateBlockHash,
   chainWork,
   createTransaction,
+  GENESIS_BLOCK,
   isValidChain,
+  mineBlock,
   sha256Hex,
 } from "../src/blockchain.mjs"
 
@@ -78,4 +80,64 @@ test("拒绝无效交易并对重复交易去重", () => {
   const transaction = createTransaction({ from: "alice", to: "bob", amount: 1 }, 1)
   assert.equal(blockchain.addTransaction(transaction), true)
   assert.equal(blockchain.addTransaction(transaction), false)
+})
+
+test("拒绝包含重复交易的外来区块", () => {
+  const blockchain = new Blockchain({ difficulty: 1 })
+  const transaction = createTransaction({ from: "alice", to: "bob", amount: 1 }, 1)
+  const block = {
+    index: blockchain.tip.index + 1,
+    timestamp: 1,
+    transactions: [transaction, transaction],
+    previousHash: blockchain.tip.hash,
+    difficulty: 1,
+    nonce: 0,
+    hash: "",
+  }
+  do {
+    block.hash = calculateBlockHash(block)
+    if (!block.hash.startsWith("0")) block.nonce += 1
+  } while (!block.hash.startsWith("0"))
+
+  assert.equal(blockchain.appendBlock(block), false)
+  assert.equal(blockchain.chain.length, 1)
+  assert.throws(
+    () => mineBlock({
+      previousBlock: blockchain.tip,
+      transactions: [transaction, transaction],
+      difficulty: 1,
+      timestamp: 1,
+    }),
+    /交易/
+  )
+})
+
+test("公开链入口拒绝畸形区块", () => {
+  const blockchain = new Blockchain({ difficulty: 1 })
+
+  assert.equal(blockchain.appendBlock(null), false)
+  assert.equal(blockchain.replaceChain([structuredClone(GENESIS_BLOCK), null]), false)
+})
+
+test("创世块和矿工输入保持可验证", () => {
+  assert.throws(() => GENESIS_BLOCK.transactions.push({}), TypeError)
+
+  assert.throws(
+    () => mineBlock({
+      previousBlock: { index: 0, hash: "invalid" },
+      transactions: [],
+      difficulty: 1,
+      timestamp: -1,
+    }),
+    /前一区块|区块时间/
+  )
+  assert.throws(
+    () => mineBlock({
+      previousBlock: GENESIS_BLOCK,
+      transactions: [createTransaction({ from: "alice", to: "bob", amount: 1 }, 1), {}],
+      difficulty: 1,
+      timestamp: 1,
+    }),
+    /交易/
+  )
 })

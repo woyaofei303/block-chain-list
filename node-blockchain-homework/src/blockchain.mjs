@@ -49,6 +49,7 @@ function validateDifficulty(difficulty) {
 }
 
 export function calculateBlockHash(block) {
+  // 共识哈希只编码固定顺序的数组，避免对象键顺序影响结果。
   const transactions = block.transactions.map((transaction) => [
     transaction.id,
     transaction.from,
@@ -72,6 +73,24 @@ export function mineBlock({ previousBlock, transactions, difficulty, timestamp =
   if (!validateDifficulty(difficulty)) {
     throw new RangeError(`挖矿难度必须是 1 到 ${MAX_DIFFICULTY} 的整数`)
   }
+  if (
+    !isBlockRecord(previousBlock) ||
+    !Number.isSafeInteger(previousBlock.index) ||
+    previousBlock.index < -1 ||
+    !isHash(previousBlock.hash)
+  ) {
+    throw new TypeError("前一区块索引或哈希无效")
+  }
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) {
+    throw new TypeError("区块时间必须是非负安全整数")
+  }
+  if (
+    !Array.isArray(transactions) ||
+    !transactions.every(isValidTransaction) ||
+    new Set(transactions.map((transaction) => transaction.id)).size !== transactions.length
+  ) {
+    throw new TypeError("区块交易无效")
+  }
   const prefix = "0".repeat(difficulty)
   const candidate = {
     index: previousBlock.index + 1,
@@ -84,6 +103,7 @@ export function mineBlock({ previousBlock, transactions, difficulty, timestamp =
   }
   const startedAt = performance.now()
   do {
+    // 递增 nonce，直到哈希满足当前难度要求的前导零。
     candidate.hash = calculateBlockHash(candidate)
     if (candidate.hash.startsWith(prefix)) break
     candidate.nonce += 1
@@ -99,16 +119,26 @@ const { block: genesisBlock } = mineBlock({
   difficulty: 1,
   timestamp: 0,
 })
+Object.freeze(genesisBlock.transactions)
 export const GENESIS_BLOCK = Object.freeze(genesisBlock)
 
+function isBlockRecord(block) {
+  return typeof block === "object" && block !== null && !Array.isArray(block)
+}
+
+function isHash(value) {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value)
+}
+
 function isValidNextBlock(previousBlock, block) {
+  if (!isBlockRecord(previousBlock) || !isBlockRecord(block)) return false
   if (!Number.isSafeInteger(block.index) || block.index !== previousBlock.index + 1) return false
   if (!Number.isSafeInteger(block.timestamp) || block.timestamp < previousBlock.timestamp) return false
   if (!Array.isArray(block.transactions) || !block.transactions.every(isValidTransaction)) return false
   if (block.previousHash !== previousBlock.hash) return false
   if (!validateDifficulty(block.difficulty)) return false
   if (!Number.isSafeInteger(block.nonce) || block.nonce < 0) return false
-  if (!/^[0-9a-f]{64}$/.test(block.hash)) return false
+  if (!isHash(block.hash)) return false
   return (
     block.hash === calculateBlockHash(block) &&
     block.hash.startsWith("0".repeat(block.difficulty))
@@ -132,6 +162,7 @@ export function isValidChain(chain) {
 }
 
 export function chainWork(chain) {
+  // 每个区块按难度贡献 16 的 difficulty 次方累计工作量。
   return chain.reduce(
     (total, block) => total + 16n ** BigInt(block.difficulty),
     0n
@@ -188,7 +219,10 @@ export class Blockchain {
   appendBlock(block) {
     if (!isValidNextBlock(this.tip, block)) return false
     const included = transactionIdsInChain(this.chain)
-    if (block.transactions.some((transaction) => included.has(transaction.id))) return false
+    for (const transaction of block.transactions) {
+      if (included.has(transaction.id)) return false
+      included.add(transaction.id)
+    }
     this.chain.push(structuredClone(block))
     const accepted = new Set(block.transactions.map((transaction) => transaction.id))
     this.mempool = this.mempool.filter((transaction) => !accepted.has(transaction.id))
@@ -197,6 +231,7 @@ export class Blockchain {
 
   replaceChain(candidateChain) {
     if (!isValidChain(candidateChain)) return false
+    // 仅替换为累计工作量更大的有效链，避免同等或较弱链回滚本地状态。
     if (chainWork(candidateChain) <= chainWork(this.chain)) return false
     this.chain = structuredClone(candidateChain)
     const included = transactionIdsInChain(this.chain)
