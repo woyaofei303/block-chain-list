@@ -33,7 +33,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger } = {})
   let startPromise
   const log = (method, value) => {
     try {
-      logger?.[method]?.(value)
+      void Promise.resolve(logger?.[method]?.(value)).catch(() => {})
     } catch {}
   }
   const server = createServer(async (request, response) => {

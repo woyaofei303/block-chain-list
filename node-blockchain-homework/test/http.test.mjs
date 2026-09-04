@@ -98,3 +98,33 @@ test("logger 抛错不影响节点启动或 500 响应", async (context) => {
   assert.equal(response.status, 500)
   assert.equal(response.body.error, "服务器内部错误")
 })
+
+test("async logger 拒绝不影响节点启动或 500 响应", async (context) => {
+  const rejections = []
+  const onUnhandledRejection = (error) => rejections.push(error)
+  process.on("unhandledRejection", onUnhandledRejection)
+  context.after(() => process.off("unhandledRejection", onUnhandledRejection))
+
+  const node = createNode({
+    port: 0,
+    difficulty: 1,
+    logger: {
+      async info() {
+        throw new Error("异步日志启动失败")
+      },
+      async error() {
+        throw new Error("异步日志错误失败")
+      },
+    },
+  })
+  await node.start()
+  context.after(() => node.stop())
+  assert.equal((await request(`${node.httpUrl}/status`)).status, 200)
+
+  node.state.minePendingTransactions = () => {
+    throw new Error("挖矿异常")
+  }
+  assert.equal((await request(`${node.httpUrl}/mine`, { method: "POST" })).status, 500)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(rejections, [])
+})
