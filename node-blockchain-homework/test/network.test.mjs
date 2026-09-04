@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { spawn } from "node:child_process"
 import test from "node:test"
 import WebSocket from "ws"
 import { createNode } from "../src/node.mjs"
@@ -159,4 +160,34 @@ test("节点重启后仍接受 P2P 连接", async (context) => {
   const socket = await openSocket(node.p2pUrl)
   context.after(() => socket.close())
   assert.equal((await get(`${node.httpUrl}/status`)).peers, 1)
+})
+
+test("节点 CLI 启动后打印 READY", async () => {
+  const child = spawn(process.execPath, [
+    "src/node.mjs",
+    "--name", "cli-test",
+    "--port", "0",
+    "--difficulty", "1",
+  ], { cwd: new URL("..", import.meta.url), stdio: ["ignore", "pipe", "pipe"] })
+
+  try {
+    const output = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("CLI 启动超时")), 3000)
+      child.stdout.once("data", (chunk) => {
+        clearTimeout(timer)
+        resolve(chunk.toString())
+      })
+      child.once("error", reject)
+      child.once("exit", (code, signal) => {
+        clearTimeout(timer)
+        reject(new Error(`CLI 未打印 READY 就退出: code=${code}, signal=${signal}`))
+      })
+    })
+    assert.match(output, /\[cli-test\] READY http:\/\/127\.0\.0\.1:\d+/)
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGTERM")
+      await new Promise((resolve) => child.once("exit", resolve))
+    }
+  }
 })

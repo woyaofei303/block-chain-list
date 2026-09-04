@@ -1,4 +1,6 @@
 import { createServer } from "node:http"
+import { pathToFileURL } from "node:url"
+import { parseArgs } from "node:util"
 import WebSocket, { WebSocketServer } from "ws"
 import { Blockchain } from "./blockchain.mjs"
 
@@ -34,6 +36,9 @@ async function readJson(request) {
 }
 
 export function createNode({ name = "node", port = 0, difficulty, logger, peers = [] } = {}) {
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+    throw new RangeError("端口必须是 0 到 65535 的整数")
+  }
   const state = new Blockchain({ difficulty })
   let httpUrl
   let p2pUrl
@@ -73,6 +78,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
         const { block, elapsedMs } = state.minePendingTransactions()
         seenBlocks.add(block.hash)
         broadcast("BLOCK", { block })
+        log("info", `挖矿耗时=${elapsedMs.toFixed(3)} ms`)
         return sendJson(response, 201, { block, miningMs: elapsedMs })
       }
       return sendJson(response, 404, { error: "接口不存在" })
@@ -115,6 +121,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
       switch (message.type) {
         case "HELLO":
           if (typeof message.data.tipHash !== "string") return
+          // 握手只比较链头；不一致时由落后节点主动索取完整链。
           if (message.data.tipHash !== state.tip.hash) send(socket, "GET_CHAIN")
           break
         case "GET_CHAIN":
@@ -123,6 +130,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
         case "CHAIN": {
           if (!Array.isArray(message.data.chain)) return
           const startedAt = performance.now()
+          // 接收方复用共识层校验，只接受累计工作量更大的完整链。
           const replaced = state.replaceChain(message.data.chain)
           if (replaced) {
             for (const block of state.chain) seenBlocks.add(block.hash)
@@ -197,9 +205,13 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
         return
       }
       pendingSockets.add(socket)
-      socket.once("open", () => attachSocket(socket))
+      const onPendingError = (error) => log("error", error)
+      socket.once("open", () => {
+        socket.off("error", onPendingError)
+        attachSocket(socket)
+      })
       socket.once("close", () => pendingSockets.delete(socket))
-      socket.on("error", (error) => log("error", error))
+      socket.once("error", onPendingError)
       return socket
     },
     async start() {
@@ -255,5 +267,43 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
       httpUrl = undefined
       p2pUrl = undefined
     },
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    const { values } = parseArgs({
+      options: {
+        name: { type: "string", default: "node" },
+        port: { type: "string", default: "3001" },
+        difficulty: { type: "string", default: "4" },
+        peer: { type: "string", multiple: true, default: [] },
+      },
+    })
+    const node = createNode({
+      name: values.name,
+      port: Number(values.port),
+      difficulty: Number(values.difficulty),
+      peers: values.peer,
+      // READY 留在 stdout，方便脚本读取；教学日志走 stderr，不干扰机器解析。
+      logger: { info: console.error, error: console.error },
+    })
+    await node.start()
+    console.log(`[${values.name}] READY ${node.httpUrl} p2p=${node.p2pUrl}`)
+
+    const shutdown = async () => {
+      try {
+        await node.stop()
+        process.exit(0)
+      } catch (error) {
+        console.error(`[${values.name}] 停止失败: ${error.message}`)
+        process.exit(1)
+      }
+    }
+    process.once("SIGINT", shutdown)
+    process.once("SIGTERM", shutdown)
+  } catch (error) {
+    console.error(`启动失败: ${error.message}`)
+    process.exitCode = 1
   }
 }
