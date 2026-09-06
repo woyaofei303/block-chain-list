@@ -1,0 +1,9 @@
+[profile.default]
+src = "contracts"
+test = "test"
+out = "../output-tdd/firstcontract/out"
+cache_path = "../output-tdd/firstcontract/cache"
+libs = []
+solc_version = "0.8.24"
+evm_version = "shanghai"
+optimizer = false
