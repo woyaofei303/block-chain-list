@@ -2,6 +2,8 @@
 
 对应截图练习：准备测试钱包和测试币、转账一次、用 Remix 部署 Counter 到 Sepolia，并提交代码、截图和交易 Hash。
 
+完整操作步骤见 [Counter 操作指南](USAGE.md)，包含 Foundry 安装、Forge 编译测试、Anvil 本地链、Cast 调用、钱包与测试币、Remix 部署以及 GitHub 和课程答案提交。
+
 2026-09-06 已使用现有 MetaMask 和已有测试币完成自转账、Remix 部署及 `add(5)`。三笔交易回执均成功，`get()` 从 `0` 变为 `5`。本次没有新建钱包或重复向水龙头领币。
 
 [课程题目](https://learnblockchain.cn/quest/ffadfacf-91cf-4f69-bea3-12226bb8ecca/challenging)要求 `counter` 状态变量、`get()` 和 `add(x)`，答题框提交 **调用 `add(x)` 的交易浏览器链接**。
