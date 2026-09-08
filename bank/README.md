@@ -7,6 +7,7 @@
 - `contracts/Bank.sol`：独立合约，无第三方合约依赖。
 - `tests/Bank_test.sol`：Remix Solidity Unit Testing 测试，包含管理员收款回调。
 - `tests/BankDepositor.sol`：模拟不同存款人的辅助合约；单独导入，避免被 Remix 当成测试套件。
+- `screenshots/`：随项目提交的编译、测试和部署截图。
 - `README.md`：规则、操作步骤和实际验证记录。
 
 ## 已确定的规则
@@ -81,7 +82,7 @@
 
 钱包直接存款会执行记账和排名逻辑，需要由钱包估算合约调用所需 Gas，不能固定成普通地址转账的 21,000。其他合约使用只有 2,300 Gas 津贴的 `send` / `transfer` 也无法完成此记账，应调用 `deposit()` 或使用能够提供足够 Gas 的调用方式。
 
-连接钱包、部署、存款和提款分别核对对应操作；私钥、助记词和密码不得保存到本项目。截图与本地验证产物保存到仓库的 `output-tdd/`，不纳入代码提交。
+连接钱包、部署、存款和提款分别核对对应操作；私钥、助记词和密码不得保存到本项目。展示截图保存在 `screenshots/` 并随项目提交；原始 RPC 读取结果等本地验证产物保存在仓库的 `output-tdd/`，不纳入代码提交。
 
 ## 实际验证与部署记录
 
@@ -107,11 +108,20 @@ Bank 合约地址：0x61Ff21654B8221Aa61D0378859c27049281e029E
 
 - [Bank 合约](https://sepolia.etherscan.io/address/0x61Ff21654B8221Aa61D0378859c27049281e029E)
 - [部署交易](https://sepolia.etherscan.io/tx/0xa5be452b7a40c135a16b9a6ec1866a358e64a9e6bba17e8607c51e148ae72091)
-- [本地测试截图（九项结果与汇总）](../output-tdd/playwright/bank/04-remix-tests-final.png)
-- [本地编译截图](../output-tdd/playwright/bank/02-remix-compiled.png)
-- [本地部署截图](../output-tdd/playwright/bank/03-sepolia-deployed.png)
 
-截图和 RPC 读取结果只保存在本地的 `output-tdd/playwright/bank/`。
+### 测试结果
+
+![Remix 自动化测试：九项通过，零项失败](screenshots/04-remix-tests-final.jpg)
+
+### 编译结果
+
+![Bank 编译成功](screenshots/02-remix-compiled.jpg)
+
+编译截图的控制台保留了早期导入失败的日志；最终测试结果以上方九项全部通过的截图为准。
+
+### Sepolia 部署结果
+
+![Bank 已部署到 Sepolia](screenshots/03-sepolia-deployed.jpg)
 
 ## 官方资料
 
