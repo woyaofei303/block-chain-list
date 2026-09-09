@@ -18,6 +18,7 @@ bigbank/
 │   ├── Bank.sol        # 基类：实现 IBank，记账、前三名、提款
 │   ├── BigBank.sol     # 派生类：存款门槛、管理员转移
 │   └── Admin.sol       # 管理合约：由 owner 发起提款并收款
+├── screenshots/        # Remix 实际存款、提款验证截图
 └── README.md
 ```
 
@@ -116,19 +117,21 @@ console.log(error?.name) // InvalidAdmin
 
 ## 在 Remix VM 手动复现
 
-1. 打开 [Remix](https://remix.ethereum.org/)，新建 `bigbank` 工作区，将 `contracts/` 中四个源码文件按相同目录导入。
+以下账户名称按 Remix 2.5.7 界面的 `Account 1` 起算。新版界面先从合约的 Functions 下拉框选择函数，再点 `Call` 查询或 `Transact` 发交易；存款金额填写在该函数下方的 Value 中。
+
+1. 打开 [Remix](https://app.remix.live/)，新建 `bigbank` 工作区，将 `contracts/` 中四个源码文件按相同目录导入。
 2. 编译器选择 `0.8.24`，EVM 选择 `shanghai`，关闭优化。编译 `BigBank.sol` 和 `Admin.sol`。
-3. Deploy & Run 中选择 **Remix VM**，账户选账户 0，Value 设为 `0 Wei`，部署 **BigBank**，记录地址。
-4. 切换账户 4，Value 保持 `0 Wei`，部署 **Admin**，记录地址。IBank 是接口，不部署；Bank 基类也无需单独部署。
-5. 查询 BigBank 的 `admin()`，应为账户 0；查询 Admin 的 `owner()`，应为账户 4。这里故意使用不同账户，区分两种权限。
-6. 切回账户 0，在 BigBank 调用 `transferAdmin()`，参数填 **Admin 合约地址**。查询 `admin()`，应等于该合约地址。
-7. 切换账户 1，将 Value 设为 `1000000000000000 Wei`，调用 BigBank 的 `deposit()`，应报 `DepositTooSmall()`，余额仍为零。
-8. 账户 1 将 Value 改为 `2000000000000000 Wei`（`0.002 ether`），调用 `deposit()`，应成功。
-9. 切换账户 2，将 Value 设为 `3000000000000000 Wei`（`0.003 ether`），对 BigBank 发送空 Calldata 的低级交易，触发 `receive()`，应成功。
-10. 切换账户 3，将 Value 设为 `4000000000000000 Wei`（`0.004 ether`），调用 `deposit()`，应成功。
-11. 查询 `deposits(地址)` 和 `getTop3()`，个人累计分别为 `0.002`、`0.003`、`0.004 ether`；排名为账户 3、2、1，BigBank 余额为 `0.009 ether`。
-12. Value 恢复为 `0 Wei`。账户 0 直接调用 BigBank 的 `withdraw()`，应报 `OnlyAdmin()`；账户 0 在 Admin 调用 `adminWithdraw(BigBank 地址)`，应报 `OnlyOwner()`。
-13. 切回 **Admin 的 Owner：账户 4**，在 Admin 调用 `adminWithdraw()`，参数填 BigBank 地址。应成功：BigBank 余额归零，Admin 余额变为 `0.009 ether`，个人历史和排行榜保留。
+3. Deploy & Run 中选择 **Remix VM → Osaka**，账户选 **Account 1**，Value 设为 `0 Wei`，部署 **BigBank**，记录地址。这里的 VM 版本与第 2 步的编译目标是两个不同设置。
+4. 切换 **Account 5**，Value 保持 `0 Wei`，部署 **Admin**，记录地址。IBank 是接口，不部署；Bank 基类也无需单独部署。
+5. 查询 BigBank 的 `admin()`，应为 Account 1；查询 Admin 的 `owner()`，应为 Account 5。这里故意使用不同账户，区分两种权限。
+6. 切回 Account 1，在 BigBank 调用 `transferAdmin()`，参数填 **Admin 合约地址**。查询 `admin()`，应等于该合约地址。
+7. 切换 Account 2，将 Value 设为 `1000000000000000 Wei`，调用 BigBank 的 `deposit()`，应报 `DepositTooSmall()`，余额仍为零。
+8. Account 2 将 Value 改为 `2000000000000000 Wei`（`0.002 ether`），调用 `deposit()`，应成功。
+9. 切换 Account 3，在 BigBank 的 **Low level interaction** 中保持 Calldata 为空。先用 `1000000000000000 Wei` 验证同样报 `DepositTooSmall()`，再用 `3000000000000000 Wei`（`0.003 ether`）点 `Transact`，触发 `receive()`，应成功。
+10. 切换 Account 4，将 Value 设为 `4000000000000000 Wei`（`0.004 ether`），调用 `deposit()`，应成功。
+11. 查询 `deposits(地址)` 和 `getTop3()`，个人累计分别为 `0.002`、`0.003`、`0.004 ether`；排名为 Account 4、3、2，BigBank 余额为 `0.009 ether`。
+12. 函数下方的 Value 恢复为 `0 Wei`。Account 1 直接调用 BigBank 的 `withdraw()`，应报 `OnlyAdmin()`；Account 1 在 Admin 调用 `adminWithdraw(BigBank 地址)`，应报 `OnlyOwner()`。
+13. 切回 **Admin 的 Owner：Account 5**，在 Admin 调用 `adminWithdraw()`，参数填 BigBank 地址。应成功：BigBank 余额归零，Admin 余额变为 `0.009 ether`，个人历史和排行榜保留。
 
 Owner 是发起提款的人，资金接收方是 **Admin 合约地址**，不是 Owner 钱包。最小合格存款 `1000000000000001 Wei` 的边界已在本地校验；如额外在 Remix 存入该金额，应同步调整预期总额。
 
@@ -147,7 +150,27 @@ Owner 是发起提款的人，资金接收方是 **Admin 合约地址**，不是
 
 临时校验脚本和本地交易记录位于仓库已忽略的 `output-tdd/bigbank-custom-errors/check.py`、`output-tdd/bigbank-custom-errors/workflow-result.json`，不属于项目依赖。模拟节点运行结束后关闭，这些地址和交易 Hash 不属于公共测试网。
 
-以上 Remix 步骤仍是待执行流程，尚未在 Remix 页面完成验证或部署到测试网。
+### Remix 实际验证（2026-09-09）
+
+已在 Remix 2.5.7 的 `bigbank` 工作区完成页面部署和交互测试，环境为 **Remix VM Osaka**，编译器为 **0.8.24 / Shanghai / 关闭优化**。两份合约先部署，再转移管理员，然后由 Account 2、3、4 分别存款，最后由 Account 5 提款。查询 `getTop3()` 确认提款前后历史金额与排名一致。
+
+```text
+BigBank：0xd9145CCE52D386f254917e481eB44e9943F39138
+Admin：  0x1bB5bf909d1200fb4730d899BAd7Ab0aE8487B0b
+Owner：  0x617F2E2fD72FD9D5503197092aC168c91465E7f2（Account 5）
+提款前： BigBank 0.009 ETH，Admin 0 ETH
+提款后： BigBank 0 ETH，Admin 0.009 ETH
+提款交易：0x9a96b6f92f53b73b29b18fb66f40df844dd26a0a652d392266841186627953eb
+交易状态：1（成功），区块 12，交易消耗 46884 gas
+```
+
+页面上还验证了四类失败：零地址管理员 `InvalidAdmin`、两个存款入口恰好 `0.001 ETH` 时的 `DepositTooSmall`、原管理员直接提款的 `OnlyAdmin`、非 Owner 调用 Admin 的 `OnlyOwner`。本次 Remix 能直接显示错误名称及源码中对应的中文 `@notice` 说明，例如 `InvalidAdmin：新管理员不能是零地址。`；该展示依赖 Remix 的编译信息，不表示中文被写入错误返回数据。
+
+这些地址与交易仅属于浏览器的 Remix VM，不属于公共测试网。拒收回滚、重入保护等验证仍来自前述本地 EVM 检查，本次没有在 Remix 重跑这些场景。
+
+![Remix：三位用户存款与排行榜](screenshots/01-remix-deposits.jpg)
+
+![Remix：Owner 提款成功及两个合约的最终余额](screenshots/02-remix-withdraw.jpg)
 
 ```sh
 git status --short --untracked-files=all -- bigbank
