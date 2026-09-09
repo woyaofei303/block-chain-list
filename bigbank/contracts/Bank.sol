@@ -4,6 +4,17 @@ pragma solidity 0.8.24;
 // ETH 存款练习：记录累计存款和前三名，由管理员统一提取合约余额。
 // 这里的 deposits 是历史记录，用户没有按个人记录自行提款的接口。
 contract Bank {
+    /// @notice 只有当前管理员可以执行此操作。
+    error OnlyAdmin();
+    /// @notice 提款回调期间不能再次提款。
+    error ReentrantWithdrawal();
+    /// @notice 合约余额为零，无法提款。
+    error NothingToWithdraw();
+    /// @notice 管理员收款失败，本次提款已回滚。
+    error WithdrawalFailed();
+    /// @notice 存款金额必须大于零。
+    error ZeroDeposit();
+
     // 本练习允许派生合约转移管理员；public 自动生成 admin() 查询接口。
     address public admin;
 
@@ -22,9 +33,8 @@ contract Bank {
     event Withdrawn(address indexed admin, uint256 amount);
 
     modifier onlyAdmin() {
-        // require(msg.sender == admin, "Only admin");
         if (msg.sender != admin) {
-            revert("Only admin");
+            revert OnlyAdmin();
         }
         _;
     }
@@ -55,18 +65,24 @@ contract Bank {
 
     // 仅管理员可提取调用时的全部实际余额；调用时不要附带 ETH。
     function withdraw() external onlyAdmin {
-        require(!withdrawing, "Reentrant withdrawal");
+        if (withdrawing) {
+            revert ReentrantWithdrawal();
+        }
         // 历史累计金额不会随提款减少，因此不能用 deposits 计算可提取金额。
         uint256 amount = address(this).balance;
-        require(amount > 0, "Nothing to withdraw");
+        if (amount == 0) {
+            revert NothingToWithdraw();
+        }
         // 保存本次收款人，避免收款回调转移管理员后事件指向其他地址。
         address recipient = admin;
 
         // 先上锁再进行外部调用；管理员若是合约，其收款代码会在 call 中执行。
         withdrawing = true;
         (bool success,) = payable(recipient).call{value: amount}("");
-        // 低级 call 用布尔值报告失败；require 让本次提款回滚，锁也恢复原值。
-        require(success, "Withdrawal failed");
+        // 低级 call 用布尔值报告失败；revert 让本次提款回滚，锁也恢复原值。
+        if (!success) {
+            revert WithdrawalFailed();
+        }
         withdrawing = false;
 
         // 提款后保留 deposits 和 top3，后续存款继续累计。
@@ -75,7 +91,9 @@ contract Bank {
 
     // 两个入口共用记账流程，内部调用保留原来的 msg.sender 和 msg.value。
     function _deposit() internal virtual {
-        require(msg.value > 0, "Deposit must be positive");
+        if (msg.value == 0) {
+            revert ZeroDeposit();
+        }
         // msg.value 是本次调用附带的 Wei；先累加，再用最新总额更新排名。
         deposits[msg.sender] += msg.value;
         _updateTop3();

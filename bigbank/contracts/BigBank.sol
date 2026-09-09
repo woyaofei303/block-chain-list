@@ -5,16 +5,25 @@ import {Bank} from "./Bank.sol";
 
 // 继承 Bank 的记账、排行榜与提款，只扩展存款门槛和管理员转移。
 contract BigBank is Bank {
+    /// @notice 新管理员不能是零地址。
+    error InvalidAdmin();
+    /// @notice 每次存款必须严格大于 0.001 ether。
+    error DepositTooSmall();
+
     event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
 
     modifier minimumDeposit() {
-        require(msg.value > 0.001 ether, "Deposit must exceed 0.001 ether");
+        if (msg.value <= 0.001 ether) {
+            revert DepositTooSmall();
+        }
         _;
     }
 
     // 只能由当前管理员转移，零地址会永久失去提款权限，因此拒绝。
     function transferAdmin(address newAdmin) external onlyAdmin {
-        require(newAdmin != address(0), "Invalid admin");
+        if (newAdmin == address(0)) {
+            revert InvalidAdmin();
+        }
         emit AdminTransferred(admin, newAdmin);
         admin = newAdmin;
     }
