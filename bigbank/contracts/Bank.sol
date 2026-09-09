@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import {IBank} from "./IBank.sol";
+
 // ETH 存款练习：记录累计存款和前三名，由管理员统一提取合约余额。
 // 这里的 deposits 是历史记录，用户没有按个人记录自行提款的接口。
-contract Bank {
+contract Bank is IBank {
     /// @notice 只有当前管理员可以执行此操作。
     error OnlyAdmin();
     /// @notice 提款回调期间不能再次提款。
@@ -64,7 +66,7 @@ contract Bank {
     }
 
     // 仅管理员可提取调用时的全部实际余额；调用时不要附带 ETH。
-    function withdraw() external onlyAdmin {
+    function withdraw() external override onlyAdmin {
         if (withdrawing) {
             revert ReentrantWithdrawal();
         }

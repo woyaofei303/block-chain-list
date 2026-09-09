@@ -1,24 +1,31 @@
-# BigBank：继承、modifier 与合约管理员
+# BigBank：接口、继承、modifier 与合约管理员
 
-按题图实现的新练习项目，独立于仓库已有的 `bank/`。使用 Solidity `0.8.24`，没有第三方合约依赖。在 Remix 中编译、部署和验证，本地目录只保存源码与说明。
+在 [Bank 基础挑战](https://decert.me/quests/c43324bc-0220-4e81-b533-668fa644c1c3) 对应的银行练习之上，按补充题目实现接口、继承与合约管理员，独立于仓库已有的 `bank/`。使用 Solidity `0.8.24`，没有第三方合约依赖。在 Remix 中编译、部署和验证，本地目录只保存源码与说明。
 
 ## 题目与实现
 
+- `Bank is IBank`：实现接口中的 `withdraw()`；`IBank` 只声明 Admin 需要的提款能力。
 - `BigBank is Bank`：继承存款记账、累计存款前三名和管理员提款。
 - 每次存款必须 **严格大于 `0.001 ether`**；`minimumDeposit` modifier 同时约束显式 `deposit()` 和直接转账的 `receive()`。
 - 当前管理员调用 `transferAdmin(Admin 合约地址)`，将 BigBank 的管理权限交给 Admin。
-- Admin 的部署者调用 `adminWithdraw(BigBank 地址)`，由 Admin 调用 BigBank 的 `withdraw()` 并接收全部 ETH。
+- Admin 的部署者调用 `adminWithdraw(IBank bank)`，由 Admin 通过接口调用 BigBank 的 `withdraw()` 并接收全部 ETH。
+- 按“部署两个合约 → 转移管理员 → 多用户存款 → Admin 的 Owner 提款”的顺序完成模拟。
 
 ```text
 bigbank/
 ├── contracts/
-│   ├── Bank.sol        # 基类：记账、前三名、提款
+│   ├── IBank.sol       # 接口：声明 withdraw()
+│   ├── Bank.sol        # 基类：实现 IBank，记账、前三名、提款
 │   ├── BigBank.sol     # 派生类：存款门槛、管理员转移
 │   └── Admin.sol       # 管理合约：由 owner 发起提款并收款
 └── README.md
 ```
 
 本项目的 Bank 沿用旧练习的代码，在本目录中独立维护。为支持继承扩展，`admin` 改为可更新变量，`_deposit()` 改为 `internal virtual`，提款权限检查复用 `onlyAdmin`。提款时保存收款地址，使回调期间管理员发生变化也不影响提款事件的收款人记录。
+
+`Bank.withdraw()` 使用 `override` 实现 `IBank.withdraw()`。Admin 只导入 `IBank.sol`，不依赖 Bank 的具体实现；BigBank 继承 Bank，因此也满足 IBank。存款、记账和排行榜仍由具体合约提供，无需放入 Admin 不使用的接口中。
+
+`IBank` 不单独部署。在 Remix 调用 `adminWithdraw()` 时，参数仍填写 BigBank 的合约地址；接口类型在 ABI 中编码为 `address`。
 
 ## 关键规则
 
@@ -42,8 +49,8 @@ bigbank/
 
 转移后：BigBank.admin = Admin 合约地址
 
-Admin.owner → Admin.adminWithdraw(BigBank)
-            → BigBank.withdraw()
+Admin.owner → Admin.adminWithdraw(IBank(BigBank 地址))
+            → IBank.withdraw() → BigBank 继承的 Bank.withdraw()
             → ETH 转入 Admin.receive()
 ```
 
@@ -89,7 +96,7 @@ Admin.OnlyOwner()          只有 Admin 的部署者可发起提款
 在 Remix 中查看错误：
 
 1. 重新编译新版代码并在 Remix VM 部署新版合约。重新编译不会更新已部署的旧合约。
-2. 保持 BigBank 的部署者为当前账户、Value 为 `0 Wei`，调用 `transferAdmin(0x0000000000000000000000000000000000000000)`。
+2. 在转移管理员之前，保持 BigBank 的部署者为当前账户、Value 为 `0 Wei`，调用 `transferAdmin(0x0000000000000000000000000000000000000000)`。
 3. 展开底部终端中的失败调用详情。若当前界面已按对应 ABI 解码，可以看到 `InvalidAdmin()`；若只显示原始 `data`，此错误的数据为 `0xb5eba9f0`。
 
 这 4 字节是 `keccak256("InvalidAdmin()")` 的前 4 字节，不是完整错误文字。ABI 中保存了错误名称和参数类型，工具据此解码；中文 `@notice` 注释用于源码与文档，不会自动成为钱包弹窗内容，也不会增加链上的错误返回数据。[Solidity 官方说明](https://docs.soliditylang.org/en/v0.8.24/contracts.html#errors-and-the-revert-statement)
@@ -109,20 +116,36 @@ console.log(error?.name) // InvalidAdmin
 
 ## 在 Remix VM 手动复现
 
-1. 打开 [Remix](https://remix.ethereum.org/)，新建 `bigbank` 工作区，将 `contracts/` 中三个源码文件按相同目录导入。
+1. 打开 [Remix](https://remix.ethereum.org/)，新建 `bigbank` 工作区，将 `contracts/` 中四个源码文件按相同目录导入。
 2. 编译器选择 `0.8.24`，EVM 选择 `shanghai`，关闭优化。编译 `BigBank.sol` 和 `Admin.sol`。
-3. Deploy & Run 中选择 **Remix VM**，账户选账户 0，Value 设为 `0 Wei`，分别部署 BigBank 和 Admin，记录两个地址。
-4. 查询 BigBank 的 `admin()` 和 Admin 的 `owner()`，都应是账户 0。
-5. 切换账户 1，将 Value 设为 `1000000000000000 Wei`，调用 BigBank 的 `deposit()`，应回退。改成 `1000000000000001 Wei`，再次调用应成功。
-6. 查询 `deposits(账户 1 地址)` 和 `getTop3()`，记录累计存款与余额。也可以用空 Calldata、上述合格 Value 的低级交易调用 BigBank，验证 `receive()` 入口。
-7. Value 恢复为 `0 Wei`，切回账户 0，在 BigBank 调用 `transferAdmin()`，参数填 **Admin 合约地址**。查询 `admin()`，应等于该地址。
-8. 账户 0 直接调用 BigBank 的 `withdraw()`，应报 `OnlyAdmin()`。
-9. 切换账户 1，在 Admin 调用 `adminWithdraw()`，参数填 BigBank 地址，应报 `OnlyOwner()`。
-10. 切回账户 0，在 Admin 调用 `adminWithdraw(BigBank 地址)`，应成功：BigBank 余额归零，Admin 余额增加相同金额，个人历史和排行榜保留。
+3. Deploy & Run 中选择 **Remix VM**，账户选账户 0，Value 设为 `0 Wei`，部署 **BigBank**，记录地址。
+4. 切换账户 4，Value 保持 `0 Wei`，部署 **Admin**，记录地址。IBank 是接口，不部署；Bank 基类也无需单独部署。
+5. 查询 BigBank 的 `admin()`，应为账户 0；查询 Admin 的 `owner()`，应为账户 4。这里故意使用不同账户，区分两种权限。
+6. 切回账户 0，在 BigBank 调用 `transferAdmin()`，参数填 **Admin 合约地址**。查询 `admin()`，应等于该合约地址。
+7. 切换账户 1，将 Value 设为 `1000000000000000 Wei`，调用 BigBank 的 `deposit()`，应报 `DepositTooSmall()`，余额仍为零。
+8. 账户 1 将 Value 改为 `2000000000000000 Wei`（`0.002 ether`），调用 `deposit()`，应成功。
+9. 切换账户 2，将 Value 设为 `3000000000000000 Wei`（`0.003 ether`），对 BigBank 发送空 Calldata 的低级交易，触发 `receive()`，应成功。
+10. 切换账户 3，将 Value 设为 `4000000000000000 Wei`（`0.004 ether`），调用 `deposit()`，应成功。
+11. 查询 `deposits(地址)` 和 `getTop3()`，个人累计分别为 `0.002`、`0.003`、`0.004 ether`；排名为账户 3、2、1，BigBank 余额为 `0.009 ether`。
+12. Value 恢复为 `0 Wei`。账户 0 直接调用 BigBank 的 `withdraw()`，应报 `OnlyAdmin()`；账户 0 在 Admin 调用 `adminWithdraw(BigBank 地址)`，应报 `OnlyOwner()`。
+13. 切回 **Admin 的 Owner：账户 4**，在 Admin 调用 `adminWithdraw()`，参数填 BigBank 地址。应成功：BigBank 余额归零，Admin 余额变为 `0.009 ether`，个人历史和排行榜保留。
+
+Owner 是发起提款的人，资金接收方是 **Admin 合约地址**，不是 Owner 钱包。最小合格存款 `1000000000000001 Wei` 的边界已在本地校验；如额外在 Remix 存入该金额，应同步调整预期总额。
 
 ## 验证记录与范围检查
 
-当前保留三个业务合约和 Remix 操作说明。本次自定义错误调整已通过 Solidity `0.8.24` 编译及独立本地 EVM 验证：8 类错误的返回标识、两个存款入口、管理员转移与提款、拒收回滚和重入保护均通过。临时校验脚本位于仓库已忽略的 `output-tdd/bigbank-custom-errors/`，不属于项目依赖。
+当前保留三个业务合约、一个 IBank 接口和 Remix 操作说明。已通过 Solidity `0.8.24` 编译及独立本地 EVM 验证：Bank 实现 IBank、Admin 参数为 IBank、8 类错误的返回标识、两个存款入口、拒收回滚和重入保护均通过。
+
+本次还实际部署了新的 BigBank 和 Admin 本地实例，Admin 的 Owner 与 BigBank 部署者不同。先转移管理员，再由三个用户分别存入 `0.002`、`0.003`、`0.004 ETH`，最后由 Admin 的 Owner 通过 `adminWithdraw(IBank bank)` 提款，结果如下：
+
+```text
+提款前：BigBank = 0.009 ETH，Admin = 0 ETH
+提款后：BigBank = 0 ETH，Admin = 0.009 ETH
+历史存款：三个地址分别累计 0.002、0.003、0.004 ETH
+排行榜：仍按 0.004、0.003、0.002 ETH 排列
+```
+
+临时校验脚本和本地交易记录位于仓库已忽略的 `output-tdd/bigbank-custom-errors/check.py`、`output-tdd/bigbank-custom-errors/workflow-result.json`，不属于项目依赖。模拟节点运行结束后关闭，这些地址和交易 Hash 不属于公共测试网。
 
 以上 Remix 步骤仍是待执行流程，尚未在 Remix 页面完成验证或部署到测试网。
 
