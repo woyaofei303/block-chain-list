@@ -59,6 +59,8 @@ BigBank 的原管理员转移后不能再直接提款或转移权限。零地址
 
 本题的资金终点是 **Admin 合约**。当前 Admin 没有将 ETH 再转给 owner 或替 BigBank 再次转移管理员的接口；本项目按本地模拟练习使用。
 
+`Admin.receive()` 发出 `Received(address indexed sender, uint256 amount)`，记录直接付款方和到账金额（Wei）。通过 `adminWithdraw()` 提款时，`sender` 是 BigBank 合约地址；钱包直接转入 ETH 时，`sender` 是钱包地址。成功提款的交易回执包含 Admin 的 `Received` 和 BigBank 的 `Withdrawn` 两条日志，展开 Remix 终端中的交易详情即可查看。Bank 的 `receive()` 已通过 `_deposit()` 发出 `Deposited`，无需重复发出存款事件。
+
 ## 自定义错误：怎么定义、怎么看
 
 三个合约统一使用无参数自定义错误，不再用字符串报错。错误声明放在所属合约内部、函数外部；BigBank 自动继承 Bank 的错误，无需重复声明。只有多个没有继承关系的合约确实需要共享错误时，再考虑合约外定义。
@@ -151,6 +153,8 @@ Owner 是发起提款的人，资金接收方是 **Admin 合约地址**，不是
 临时校验脚本和本地交易记录位于仓库已忽略的 `output-tdd/bigbank-custom-errors/check.py`、`output-tdd/bigbank-custom-errors/workflow-result.json`，不属于项目依赖。模拟节点运行结束后关闭，这些地址和交易 Hash 不属于公共测试网。
 
 ### Remix 实际验证（2026-09-09）
+
+以下地址、Gas 数值和截图对应新增 `Received` 事件之前的版本。要在 Remix 查看新版收款日志，需要重新编译并部署新的 BigBank、Admin，再按上面的流程操作；现有实例不会随源码更新。本次新增事件已通过本地 EVM 验证，覆盖钱包直接收款、银行提款的日志地址、发送方、金额及事件数量。
 
 已在 Remix 2.5.7 的 `bigbank` 工作区完成页面部署和交互测试，环境为 **Remix VM Osaka**，编译器为 **0.8.24 / Shanghai / 关闭优化**。两份合约先部署，再转移管理员，然后由 Account 2、3、4 分别存款，最后由 Account 5 提款。查询 `getTop3()` 确认提款前后历史金额与排名一致。
 

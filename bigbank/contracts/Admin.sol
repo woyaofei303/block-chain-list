@@ -10,12 +10,16 @@ contract Admin {
 
     address public immutable owner;
 
+    event Received(address indexed sender, uint256 amount);
+
     constructor() {
         owner = msg.sender;
     }
 
     // 接收 Bank.withdraw() 转来的 ETH，资金保留在 Admin 合约中。
-    receive() external payable {}
+    receive() external payable {
+        emit Received(msg.sender, msg.value);
+    }
 
     function adminWithdraw(IBank bank) external {
         if (msg.sender != owner) {
