@@ -4,6 +4,8 @@
 
 当前状态：ERC20、TokenBank 及 Remix 测试已实现；在 Remix 中编译成功，五组测试全部通过。只使用 Remix 验证，未部署到公共网络，也未提交答题表单。下文区分网页题目要求、图片补充要求和本项目实现。
 
+完整操作步骤见 [Remix 完整操作流程](REMIX_GUIDE.md)，包含环境准备、部署、授权、存取款、多用户验证、异常检查和作业提交。
+
 ## 1. 编写 ERC20 token 合约
 
 - [题目主页](https://learnblockchain.cn/quest/aa45f136-27a3-4bc9-b4f7-15308e1e0daa)
@@ -87,6 +89,7 @@ tokenbank/
 ├── tests/
 │   ├── TokenBankHelpers.sol
 │   └── TokenBank_test.sol
+├── REMIX_GUIDE.md
 └── README.md
 ```
 
@@ -119,6 +122,8 @@ tokenbank/
 5. `failedTransfersRollBackAndCanRetry`：转账返回 `false` 时存款不入账、提款扣账回滚，恢复后可重新提款。
 
 ## 6. Remix VM 手动复现与提交
+
+下方是操作摘要；逐步参数、内部调用和预期结果请阅读 [独立流程说明](REMIX_GUIDE.md)。
 
 以下是可复现的操作步骤；上述实际验证记录来自自动化测试，不代表已经单独完成本节手动操作。
 
