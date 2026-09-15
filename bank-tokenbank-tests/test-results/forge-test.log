@@ -1,5 +1,5 @@
-Compiling 2 files with Solc 0.8.24
-Solc 0.8.24 finished in 80.18ms
+Compiling 4 files with Solc 0.8.24
+Solc 0.8.24 finished in 104.18ms
 Compiler run successful!
 
 Ran 7 tests for test/Bank.t.sol:BankTest
@@ -10,10 +10,10 @@ Ran 7 tests for test/Bank.t.sol:BankTest
 [PASS] testTop3WithOneUser() (gas: 105606)
 [PASS] testTop3WithThreeUsers() (gas: 266473)
 [PASS] testTop3WithTwoUsers() (gas: 175710)
-Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 9.85ms (20.49ms CPU time)
+Suite result: ok. 7 passed; 0 failed; 0 skipped; finished in 9.95ms (19.49ms CPU time)
 
 Ran 1 test for test/TokenBankUSDTSepoliaFork.t.sol:TokenBankUSDTSepoliaForkTest
 [PASS] testSepoliaUSDTDepositAndWithdraw() (gas: 271633)
-Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 893.06ms (256.46µs CPU time)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 2.14s (357.79µs CPU time)
 
-Ran 2 test suites in 898.69ms (902.91ms CPU time): 8 tests passed, 0 failed, 0 skipped (8 total tests)
+Ran 2 test suites in 2.16s (2.15s CPU time): 8 tests passed, 0 failed, 0 skipped (8 total tests)
