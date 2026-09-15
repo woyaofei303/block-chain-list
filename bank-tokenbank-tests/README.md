@@ -12,6 +12,9 @@ bank-tokenbank-tests/
 ├── src/
 │   ├── Bank.sol
 │   └── TokenBank.sol
+├── script/
+│   ├── DeployBank.s.sol
+│   └── DeployTokenBank.s.sol
 ├── test/
 │   ├── Bank.t.sol
 │   └── TokenBankUSDTSepoliaFork.t.sol
@@ -26,7 +29,8 @@ bank-tokenbank-tests/
 2. `test/Bank.t.sol`：查看每条 Bank 需求如何转换成可运行断言。
 3. `src/TokenBank.sol`：理解 ERC-20 的授权、存款和提款。
 4. `test/TokenBankUSDTSepoliaFork.t.sol`：理解 Sepolia fork 如何复用链上 USDT 状态。
-5. `test-results/forge-test.log`：核对最后一次完整运行结果。
+5. `script/`：模拟或广播两个合约的 Sepolia 部署。
+6. `test-results/forge-test.log`：核对最后一次完整运行结果。
 
 ## 2. 运行测试前需要理解的四个概念
 
@@ -342,3 +346,207 @@ TokenBankUSDTSepoliaForkTest：1 passed
 - 只有管理员提款：`testOnlyAdminCanWithdraw`。
 - Sepolia USDT 存取：`testSepoliaUSDTDepositAndWithdraw`。
 - 测试通过日志：`test-results/forge-test.log`。
+
+## 10. Sepolia 部署与查看
+
+`script/DeployBank.s.sol` 部署 Bank，部署交易的发送者会成为 `admin`。
+
+`script/DeployTokenBank.s.sol` 部署 TokenBank，并自动绑定本项目测试使用的 Sepolia USDT 地址。
+
+Foundry 脚本默认只模拟。只有增加 `--broadcast` 并提供签名账户后，交易才会发送到 Sepolia。
+
+### 10.1 准备 RPC 与部署账户
+
+设置公开信息，不要把私钥直接写入命令或提交到仓库：
+
+```bash
+export SEPOLIA_RPC_URL="https://ethereum-sepolia-rpc.publicnode.com"
+export DEPLOYER_ADDRESS="0x你的部署账户地址"
+```
+
+把私钥交互式导入 Foundry 加密 keystore。终端会隐藏私钥和密码输入：
+
+```bash
+cast wallet import sepolia-deployer --interactive
+```
+
+部署账户需要少量 Sepolia ETH 支付 Gas。先检查余额：
+
+```bash
+cast balance "$DEPLOYER_ADDRESS" --ether --rpc-url "$SEPOLIA_RPC_URL"
+```
+
+### 10.2 先模拟 Bank 部署
+
+下面的命令会连接 Sepolia 读取链状态并完整模拟，但不会发送交易：
+
+```bash
+forge script script/DeployBank.s.sol:DeployBankScript \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --sender "$DEPLOYER_ADDRESS" \
+  -vvvv
+```
+
+输出中的 `BankDeployed` 和 `== Return ==` 会显示模拟部署地址与管理员地址。最后还会显示预计 Gas 和预计需要的 Sepolia ETH。
+
+### 10.3 广播 Bank 部署
+
+确认模拟结果和 Gas 后，再增加账户与 `--broadcast`：
+
+```bash
+forge script script/DeployBank.s.sol:DeployBankScript \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --sender "$DEPLOYER_ADDRESS" \
+  --account sepolia-deployer \
+  --broadcast \
+  -vvvv
+```
+
+命令会要求输入 keystore 密码。成功后，真实部署地址会保存在 `broadcast/DeployBank.s.sol/11155111/run-latest.json`。
+
+可以直接提取地址：
+
+```bash
+export BANK_ADDRESS="$(jq -r '.transactions[] | select(.transactionType == "CREATE") | .contractAddress' broadcast/DeployBank.s.sol/11155111/run-latest.json)"
+printf '%s\n' "$BANK_ADDRESS"
+printf 'https://sepolia.etherscan.io/address/%s\n' "$BANK_ADDRESS"
+```
+
+最后一行生成浏览器链接。只有广播成功后的真实地址能在 Sepolia Etherscan 中查看，模拟地址不会出现在链上。
+
+### 10.4 查看 Bank
+
+先确认地址上存在合约代码，再读取管理员、余额和排行榜：
+
+```bash
+cast code "$BANK_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+cast call "$BANK_ADDRESS" 'admin()(address)' --rpc-url "$SEPOLIA_RPC_URL"
+cast balance "$BANK_ADDRESS" --ether --rpc-url "$SEPOLIA_RPC_URL"
+cast call "$BANK_ADDRESS" 'top3(uint256)(address)' 0 --rpc-url "$SEPOLIA_RPC_URL"
+cast call "$BANK_ADDRESS" 'top3(uint256)(address)' 1 --rpc-url "$SEPOLIA_RPC_URL"
+cast call "$BANK_ADDRESS" 'top3(uint256)(address)' 2 --rpc-url "$SEPOLIA_RPC_URL"
+```
+
+查询某个用户的历史累计存款：
+
+```bash
+export USER_ADDRESS="0x要查询的用户地址"
+cast call "$BANK_ADDRESS" 'deposits(address)(uint256)' "$USER_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+```
+
+### 10.5 向 Bank 存款并查看结果
+
+下面示例让 keystore 中的部署账户存入 `0.001 Sepolia ETH`：
+
+```bash
+cast send "$BANK_ADDRESS" 'deposit()' \
+  --value 0.001ether \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --account sepolia-deployer
+```
+
+交易确认后，再读取该账户累计存款和 Bank 实际余额：
+
+```bash
+cast call "$BANK_ADDRESS" 'deposits(address)(uint256)' "$DEPLOYER_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+cast balance "$BANK_ADDRESS" --ether --rpc-url "$SEPOLIA_RPC_URL"
+```
+
+只有 `admin()` 返回的账户可以提款。提款会取走 Bank 的全部 ETH：
+
+```bash
+cast send "$BANK_ADDRESS" 'withdraw()' \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --account sepolia-deployer
+```
+
+### 10.6 模拟并广播 TokenBank 部署
+
+先模拟：
+
+```bash
+forge script script/DeployTokenBank.s.sol:DeployTokenBankScript \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --sender "$DEPLOYER_ADDRESS" \
+  -vvvv
+```
+
+确认模拟结果后广播：
+
+```bash
+forge script script/DeployTokenBank.s.sol:DeployTokenBankScript \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --sender "$DEPLOYER_ADDRESS" \
+  --account sepolia-deployer \
+  --broadcast \
+  -vvvv
+```
+
+提取真实 TokenBank 地址，并保存 Sepolia USDT 地址：
+
+```bash
+export TOKEN_BANK_ADDRESS="$(jq -r '.transactions[] | select(.transactionType == "CREATE") | .contractAddress' broadcast/DeployTokenBank.s.sol/11155111/run-latest.json)"
+export USDT_ADDRESS="0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0"
+printf '%s\n' "$TOKEN_BANK_ADDRESS"
+printf 'https://sepolia.etherscan.io/address/%s\n' "$TOKEN_BANK_ADDRESS"
+```
+
+### 10.7 查看 TokenBank
+
+核对合约代码、绑定的 Token，以及指定用户的可提余额：
+
+```bash
+cast code "$TOKEN_BANK_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+cast call "$TOKEN_BANK_ADDRESS" 'token()(address)' --rpc-url "$SEPOLIA_RPC_URL"
+cast call "$TOKEN_BANK_ADDRESS" 'balances(address)(uint256)' "$DEPLOYER_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+cast call "$USDT_ADDRESS" 'balanceOf(address)(uint256)' "$TOKEN_BANK_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+```
+
+### 10.8 使用 Sepolia USDT 存取
+
+真实交互要求部署账户已经持有该 Sepolia USDT 测试 Token。先读取钱包余额：
+
+```bash
+cast call "$USDT_ADDRESS" 'balanceOf(address)(uint256)' "$DEPLOYER_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+```
+
+该 USDT 使用 6 位小数。下面以 `1 USDT = 1000000` 最小单位为例，先授权，再存入：
+
+```bash
+cast send "$USDT_ADDRESS" 'approve(address,uint256)(bool)' "$TOKEN_BANK_ADDRESS" 1000000 \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --account sepolia-deployer
+
+cast send "$TOKEN_BANK_ADDRESS" 'deposit(uint256)' 1000000 \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --account sepolia-deployer
+```
+
+查看内部记账与 TokenBank 的实际 USDT 持仓：
+
+```bash
+cast call "$TOKEN_BANK_ADDRESS" 'balances(address)(uint256)' "$DEPLOYER_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+cast call "$USDT_ADDRESS" 'balanceOf(address)(uint256)' "$TOKEN_BANK_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+```
+
+取出 `1 USDT`，再检查用户余额和 TokenBank 余额：
+
+```bash
+cast send "$TOKEN_BANK_ADDRESS" 'withdraw(uint256)' 1000000 \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --account sepolia-deployer
+
+cast call "$TOKEN_BANK_ADDRESS" 'balances(address)(uint256)' "$DEPLOYER_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+cast call "$USDT_ADDRESS" 'balanceOf(address)(uint256)' "$DEPLOYER_ADDRESS" --rpc-url "$SEPOLIA_RPC_URL"
+```
+
+### 10.9 部署结果保存在哪里
+
+Foundry 会为每个已广播脚本保存交易与回执：
+
+```text
+broadcast/DeployBank.s.sol/11155111/run-latest.json
+broadcast/DeployTokenBank.s.sol/11155111/run-latest.json
+```
+
+`broadcast/` 和 `cache/` 可能包含部署账户、交易参数及本地签名信息，已经通过 `.gitignore` 排除，不会提交到仓库。
