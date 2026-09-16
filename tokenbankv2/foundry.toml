@@ -1,6 +1,6 @@
 [profile.default]
-src = "contracts"
-test = "test-foundry"
+src = "src"
+test = "test"
 out = "out"
 libs = ["../foundry-counter/lib"]
 solc_version = "0.8.24"

@@ -39,7 +39,7 @@ contract NFTMarket is ITokenReceiverWithData {
             nft.getApproved(tokenId) == address(this) || nft.isApprovedForAll(msg.sender, address(this)),
             "Market not approved"
         );
-        listings[tokenId] = Listing(msg.sender, price);
+        listings[tokenId] = Listing({seller: msg.sender, price: price});
     }
 
     function buyNFT(uint256 tokenId) external {

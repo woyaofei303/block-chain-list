@@ -3,8 +3,8 @@ pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {ERC20WithCallback} from "../contracts/ERC20WithCallback.sol";
-import {NFTMarket} from "../contracts/NFTMarket.sol";
+import {ERC20WithCallback} from "../src/ERC20WithCallback.sol";
+import {NFTMarket} from "../src/NFTMarket.sol";
 
 contract MarketTestNFT is ERC721 {
     constructor() ERC721("Market Test NFT", "MTNFT") {}
