@@ -1,0 +1,5 @@
+CounterTest:testFuzz_SetNumber(uint256) (runs: 256, μ: 53140, ~: 54098)
+CounterTest:test_Increment() (gas: 53777)
+MyTokenTest:testFuzz_TransferAndTransferFromPreserveSupply(uint256) (runs: 256, μ: 203865, ~: 206343)
+MyTokenTest:test_InitialSupplyBelongsToDeployer() (gas: 45300)
+MyTokenTest:test_InvalidTransfersRevertWithoutChangingBalances() (gas: 116602)

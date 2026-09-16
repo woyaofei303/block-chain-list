@@ -1,0 +1,10 @@
+{
+  "name": "Consensus Bloom",
+  "description": "Independent nodes converge into a shared luminous structure in the Blocklight Genesis collection.",
+  "image": "ipfs://bafybeif7vyzmweiktki4uwkng37hyhnbfwvzendmvf7gk2sx4deiw6oo34/1.png",
+  "attributes": [
+    { "trait_type": "State", "value": "Consensus" },
+    { "trait_type": "Energy", "value": "Bloom" },
+    { "trait_type": "Palette", "value": "Violet Cyan" }
+  ]
+}

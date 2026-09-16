@@ -1,8 +1,8 @@
-# ERC20 Hook 与 TokenBankV2
+# ERC20 Hook、TokenBankV2 与 NFTMarket
 
-在 ERC20 转账后通知接收合约，让用户通过一次 `transferWithCallback` 完成转账和银行存款记账。使用 **Solidity 0.8.24 + Remix VM + Solidity Unit Testing**，不使用 Foundry，不需要安装本地依赖。
+在 ERC20 转账后通知接收合约，让用户通过一次 `transferWithCallback` 完成存款或购买 NFT。本次 NFTMarket 使用 Solidity 0.8.24 + Foundry 完成编译和测试，不使用 Remix；目录中原有的 Remix 文档仅保留给旧 TokenBankV2 练习。
 
-从这里开始：[Remix 完整交互流程](REMIX_GUIDE.md)。文档包含导入、编译、部署、免授权存款、提款、多用户验证、旧存款方式和失败场景。
+本次作业从 [NFTMarket](#nftmarket) 开始；[REMIX_GUIDE.md](REMIX_GUIDE.md) 仅属于原有 TokenBankV2 练习，不参与本次编译、测试或部署。
 
 ## 1. 文件与继承关系
 
@@ -12,10 +12,15 @@ tokenbankv2/
 │   ├── BaseERC20.sol           原项目基础 ERC20
 │   ├── ERC20WithCallback.sol   继承 BaseERC20，定义接收接口并新增 Hook 转账
 │   ├── TokenBank.sol           原项目银行
-│   └── TokenBankV2.sol         继承 TokenBank，实现 tokensReceived
+│   ├── TokenBankV2.sol         继承 TokenBank，实现 tokensReceived
+│   └── NFTMarket.sol           使用 BERC20 买卖指定 ERC721
 ├── tests/
 │   ├── HookHelpers.sol         模拟另一位用户、接受或拒绝回调的接收合约
 │   └── TokenBankV2_test.sol    六组 Remix Solidity 测试
+├── test-foundry/
+│   └── NFTMarket.t.sol         NFTMarket 的 Foundry 测试
+├── foundry.toml
+├── remappings.txt
 ├── README.md
 └── REMIX_GUIDE.md
 ```
@@ -64,6 +69,9 @@ Hook 不是浏览器异步通知，也不是监听事件后再发一笔交易；
 ```solidity
 function transferWithCallback(address to, uint256 amount) external returns (bool);
 function tokensReceived(address from, uint256 amount) external returns (bool);
+
+function transferWithCallback(address to, uint256 amount, bytes calldata data) external returns (bool);
+function tokensReceived(address from, uint256 amount, bytes calldata data) external returns (bool);
 ```
 
 这是自定义扩展，不是完整的 ERC777 或 ERC1363 实现；接收方需实现本项目约定的 ABI。
@@ -75,6 +83,44 @@ function tokensReceived(address from, uint256 amount) external returns (bool);
 ```
 
 银行用 `msg.sender == address(token)` 验证通知来源，用 `balances[from]` 记录存款。若直接使用 `balances[msg.sender]`，余额会记到 Token 合约名下；若使用 `tx.origin`，通过合约钱包存款时会记错人。
+
+## NFTMarket
+
+市场在构造时绑定一个 `ERC20WithCallback` 地址和一个 ERC721 地址。上架采用非托管方式：NFT 仍在卖家钱包，卖家需要先授权市场；付款和 NFT 转移在同一笔交易中完成，任一步失败都会整体回滚。
+
+```solidity
+function list(uint256 tokenId, uint256 price) external;
+function buyNFT(uint256 tokenId) external;
+function tokensReceived(address from, uint256 amount, bytes calldata data) external returns (bool);
+```
+
+普通购买流程：
+
+```text
+卖家：NFT.approve(market, tokenId)
+卖家：market.list(tokenId, price)
+买家：Token.approve(market, price)
+买家：market.buyNFT(tokenId)
+```
+
+回调购买不需要 `approve` Token，`data` 必须是 `abi.encode(tokenId)`：
+
+```solidity
+token.transferWithCallback(address(market), price, abi.encode(tokenId));
+```
+
+`tokensReceived` 只接受绑定的支付 Token 调用，并要求到账数量等于上架价格。金额使用 Token 最小单位；本项目中 `100 ether` 表示 100 枚、18 位精度的 BERC20。
+
+运行 NFTMarket 测试：
+
+```bash
+cd tokenbankv2
+forge fmt --check
+forge build --sizes
+forge test -vv
+```
+
+核心代码：[NFTMarket.sol](contracts/NFTMarket.sol)，测试：[NFTMarket.t.sol](test-foundry/NFTMarket.t.sol)。
 
 `tokensReceived` 中只记账，不能再次调用 `deposit` 或 `transferFrom`：Token 已经转过来了。Hook 路径不需要授权，也不消耗已有授权；旧的 `approve + deposit` 仍可使用，两条路径共享继承的 `balances`。
 

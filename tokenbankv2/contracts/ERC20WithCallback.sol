@@ -11,6 +11,11 @@ interface ITokenReceiver {
     function tokensReceived(address from, uint256 amount) external returns (bool);
 }
 
+/// @notice 带业务数据的接收接口；data 由接收合约自行解码。
+interface ITokenReceiverWithData {
+    function tokensReceived(address from, uint256 amount, bytes calldata data) external returns (bool);
+}
+
 /// @notice 继承原版 ERC20，只为新入口增加回调，普通 transfer/transferFrom 保持原样。
 contract ERC20WithCallback is BaseERC20 {
     /// @notice 用户直接转出自己的 Token，无需 approve；合约接收方必须接受回调。
@@ -23,6 +28,16 @@ contract ERC20WithCallback is BaseERC20 {
         if (to.code.length > 0) {
             // 不吞掉错误：缺少接口、回调 revert 或返回 false 时，整笔转账及事件回滚。
             require(ITokenReceiver(to).tokensReceived(msg.sender, amount), "ERC20: callback rejected");
+        }
+        return true;
+    }
+
+    /// @notice 转账并把额外业务数据原样传给接收合约。
+    function transferWithCallback(address to, uint256 amount, bytes calldata data) external returns (bool) {
+        super.transfer(to, amount);
+
+        if (to.code.length > 0) {
+            require(ITokenReceiverWithData(to).tokensReceived(msg.sender, amount, data), "ERC20: callback rejected");
         }
         return true;
     }

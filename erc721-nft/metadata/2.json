@@ -1,0 +1,10 @@
+{
+  "name": "Finality Horizon",
+  "description": "Layered blocks settle into an irreversible line of light, completing Blocklight Genesis.",
+  "image": "ipfs://bafybeif7vyzmweiktki4uwkng37hyhnbfwvzendmvf7gk2sx4deiw6oo34/2.png",
+  "attributes": [
+    { "trait_type": "State", "value": "Finality" },
+    { "trait_type": "Energy", "value": "Horizon" },
+    { "trait_type": "Palette", "value": "Gold Azure" }
+  ]
+}

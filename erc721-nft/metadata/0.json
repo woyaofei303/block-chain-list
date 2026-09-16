@@ -1,0 +1,10 @@
+{
+  "name": "Genesis Pulse",
+  "description": "The first signal of Blocklight Genesis, carrying energy through a crystalline onchain lattice.",
+  "image": "ipfs://bafybeif7vyzmweiktki4uwkng37hyhnbfwvzendmvf7gk2sx4deiw6oo34/0.png",
+  "attributes": [
+    { "trait_type": "State", "value": "Genesis" },
+    { "trait_type": "Energy", "value": "Pulse" },
+    { "trait_type": "Palette", "value": "Electric Blue" }
+  ]
+}
