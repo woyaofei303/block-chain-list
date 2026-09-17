@@ -15,6 +15,9 @@ contract MarketTestNFT is ERC721 {
 }
 
 contract NFTMarketTest is Test {
+    event NFTListed(address indexed seller, uint256 indexed tokenId, uint256 price);
+    event NFTSold(address indexed seller, address indexed buyer, uint256 indexed tokenId, uint256 price);
+
     uint256 private constant TOKEN_ID = 7;
     uint256 private constant PRICE = 100 ether;
 
@@ -58,6 +61,30 @@ contract NFTMarketTest is Test {
         assertEq(listedPrice, 0);
     }
 
+    function testListEmitsNFTListed() public {
+        vm.startPrank(seller);
+        nft.approve(address(market), TOKEN_ID);
+
+        vm.expectEmit(true, true, false, true, address(market));
+        emit NFTListed(seller, TOKEN_ID, PRICE);
+        market.list(TOKEN_ID, PRICE);
+        vm.stopPrank();
+    }
+
+    function testBuyNFTEmitsNFTSold() public {
+        vm.startPrank(seller);
+        nft.approve(address(market), TOKEN_ID);
+        market.list(TOKEN_ID, PRICE);
+        vm.stopPrank();
+
+        vm.startPrank(buyer);
+        token.approve(address(market), PRICE);
+        vm.expectEmit(true, true, true, true, address(market));
+        emit NFTSold(seller, buyer, TOKEN_ID, PRICE);
+        market.buyNFT(TOKEN_ID);
+        vm.stopPrank();
+    }
+
     function testNonOwnerCannotListNFT() public {
         vm.prank(buyer);
         vm.expectRevert("Only NFT owner");
@@ -83,6 +110,8 @@ contract NFTMarketTest is Test {
         vm.stopPrank();
 
         vm.prank(buyer);
+        vm.expectEmit(true, true, true, true, address(market));
+        emit NFTSold(seller, buyer, TOKEN_ID, PRICE);
         token.transferWithCallback(address(market), PRICE, abi.encode(TOKEN_ID));
 
         assertEq(nft.ownerOf(TOKEN_ID), buyer);

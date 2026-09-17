@@ -1,0 +1,15 @@
+{
+  "name": "nft-market-listener",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "check": "node --check backend/listen-events.mjs",
+    "listen": "node backend/listen-events.mjs"
+  },
+  "dependencies": {
+    "viem": "2.56.7"
+  }
+}
