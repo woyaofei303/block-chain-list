@@ -1,5 +1,7 @@
 # NFTMarket（Foundry）
 
+本目录新增了 [Token Bank 前端](frontend/README.md)，通过现有 `erc20-event-indexer` 后端展示转账记录。部署银行、配置索引器与前端、存取款、记录确认、发布及排障的完整流程见该说明；下文保留 NFTMarket 原有操作流程。
+
 使用自发行的 ERC20 扩展 Token 买卖指定 ERC721 集合。合约使用 Foundry：`forge` 负责编译、测试和部署，`cast` 负责链上读取与交易；后台使用 Viem 监听上架和成交事件。
 
 题目：[Decert NFTMarket](https://decert.me/challenge/4df553df-fbab-49c8-a05f-83256432c6af)

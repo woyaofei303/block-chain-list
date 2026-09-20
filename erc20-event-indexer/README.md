@@ -6,6 +6,8 @@
 
 使用 Express 5、Viem 和本机 PostgreSQL，不需要重新部署合约。Express 管理路由和中间件，Viem 读取链上事件，`pg` 访问数据库。
 
+需要连同钱包和前端一起验收时，参照 [Token Bank 完整实操流程](../tokenbankv2/frontend/WALKTHROUGH.md)，从本地合约部署、测试资产准备到 API 和数据库核对逐步执行。
+
 ## 代码结构
 
 ```text

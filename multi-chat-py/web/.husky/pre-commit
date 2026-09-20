@@ -4,3 +4,7 @@ pnpm --dir multi-chat-py/web precommit
 if git diff --cached --name-only -- erc20-event-indexer/ | grep -q .; then
   npm --prefix erc20-event-indexer run precommit
 fi
+
+if git diff --cached --name-only -- tokenbankv2/frontend/ | grep -q .; then
+  pnpm --dir tokenbankv2/frontend precommit
+fi
