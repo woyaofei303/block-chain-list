@@ -49,13 +49,13 @@ export function TransferHistory({
   return (
     <section
       id="activity"
-      className="activity"
+      className="mx-auto mt-14 max-w-[920px] border-t border-line pt-[26px] mobile:mt-9"
       aria-labelledby="activity-title"
     >
-      <div className="section-heading">
+      <div className="flex items-center justify-between gap-4 [&_p]:mt-[7px] mobile:[&_h2]:text-[17px]">
         <div>
           <h2 id="activity-title">转账记录</h2>
-          <p className="muted small">你的 Token 动态，一目了然</p>
+          <p className="text-muted text-[12px]">你的 Token 动态，一目了然</p>
         </div>
         <button
           type="button"
@@ -69,14 +69,19 @@ export function TransferHistory({
         </button>
       </div>
       {!account || !snapshot ? (
-        <div className="empty-state">
-          <span aria-hidden="true">↗</span>
+        <div className="px-4 pt-9 pb-8 text-center text-[14px] text-[#8e8490]">
+          <span
+            aria-hidden="true"
+            className="mb-3 inline-grid size-[38px] place-items-center rounded-full bg-[#faf5f9] text-[20px] text-[#c8a6bf]"
+          >
+            ↗
+          </span>
           <p>
             {account
               ? "请先完成网络切换和合约余额读取"
               : "连接钱包，查看你的转账记录"}
           </p>
-          <p className="small muted">
+          <p className="mt-[7px] text-[12px] text-muted">
             存入、取出及该 Token 的其他转账都会显示在这里。
           </p>
         </div>
@@ -86,20 +91,28 @@ export function TransferHistory({
           。可点击“刷新记录”重试，链上存取款仍可使用。
         </div>
       ) : !records ? (
-        <p className="empty-state" role="status">
+        <p
+          className="px-4 pt-9 pb-8 text-center text-[14px] text-[#8e8490]"
+          role="status"
+        >
           正在查询转账记录…
         </p>
       ) : records.transfers.length === 0 ? (
-        <div className="empty-state">
-          <span aria-hidden="true">↗</span>
+        <div className="px-4 pt-9 pb-8 text-center text-[14px] text-[#8e8490]">
+          <span
+            aria-hidden="true"
+            className="mb-3 inline-grid size-[38px] place-items-center rounded-full bg-[#faf5f9] text-[20px] text-[#c8a6bf]"
+          >
+            ↗
+          </span>
           <p>{offset ? "本页暂无更多记录" : "还没有转账记录"}</p>
-          <p className="small muted">
+          <p className="mt-[7px] text-[12px] text-muted">
             交易确认后，等待索引服务同步即可在这里查看。
           </p>
         </div>
       ) : (
-        <div className="table-scroll">
-          <table>
+        <div className="mt-[22px] overflow-x-auto">
+          <table className="w-full border-collapse text-left text-[12px] whitespace-nowrap [&_th]:py-2.5 [&_th]:pr-3 [&_th]:text-[11px] [&_th]:font-normal [&_th]:text-[#9a919d] [&_td]:border-t [&_td]:border-[#f4f2f5] [&_td]:py-[18px] [&_td]:pr-3.5 [&_th:last-child]:pr-0 [&_th:last-child]:text-right [&_td:last-child]:pr-0 [&_td:last-child]:text-right">
             <thead>
               <tr>
                 <th>操作</th>
@@ -120,17 +133,17 @@ export function TransferHistory({
                   <tr key={`${row.transactionHash}:${row.logIndex}`}>
                     <td>
                       <span
-                        className={`transfer-icon ${outgoing ? "out" : "in"}`}
+                        className={`mr-2.5 inline-grid size-[30px] place-items-center rounded-full text-[16px] ${outgoing ? "bg-[#f8f5f9] text-[#9a8da1]" : "bg-[#f0f9f4] text-[#39997a]"}`}
                         aria-hidden="true"
                       >
                         {self ? "↔" : outgoing ? "↗" : "↙"}
                       </span>
                       {self ? "自转账" : outgoing ? "转出" : "转入"}
                     </td>
-                    <td className={outgoing ? "" : "incoming"}>
+                    <td className={outgoing ? "" : "text-[#39997a]"}>
                       {self ? "" : outgoing ? "−" : "+"}
                       {formatUnits(BigInt(row.valueRaw), snapshot.decimals)}{" "}
-                      <span className="muted">{snapshot.symbol}</span>
+                      <span className="text-muted">{snapshot.symbol}</span>
                     </td>
                     <td>
                       <a
@@ -143,7 +156,7 @@ export function TransferHistory({
                       </a>
                       <br />
                       <a
-                        className="muted"
+                        className="text-muted"
                         href={explorerLink("address", row.toAddress)}
                         title={row.toAddress}
                         target="_blank"
@@ -152,7 +165,7 @@ export function TransferHistory({
                         {shortAddress(row.toAddress)}
                       </a>
                     </td>
-                    <td className="muted">{row.blockNumber}</td>
+                    <td className="text-muted">{row.blockNumber}</td>
                     <td>
                       <a
                         href={explorerLink("tx", row.transactionHash)}
@@ -171,14 +184,14 @@ export function TransferHistory({
           </table>
         </div>
       )}
-      <div className="history-footer">
-        <p className="small muted">
+      <div className="flex items-center justify-between gap-4 border-t border-[#f4f2f5] py-3 [&_p]:text-[11px]">
+        <p className="text-[12px] text-muted">
           {records?.indexedThrough
             ? `已同步至区块 ${records.indexedThrough}`
             : "等待索引同步"}{" "}
           · 每 15 秒更新
         </p>
-        <div className="pagination">
+        <div className="flex items-center gap-3 text-[12px] text-[#8b808b] [&_button]:size-7 [&_button]:rounded-lg [&_button]:border-0 [&_button]:bg-[#faf8fb]">
           <button
             type="button"
             aria-label="上一页"

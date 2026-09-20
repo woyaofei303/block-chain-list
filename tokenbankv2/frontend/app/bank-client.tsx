@@ -26,22 +26,32 @@ export function BankClient() {
   const sessionKey = `${connection.address}:${connection.chainId}:${connection.connector?.uid}:${bankAddress}`
   return (
     <>
-      <header className="site-header">
-        <a href="#bank" className="brand" aria-label="Token Bank 首页">
-          <span className="brand-mark" aria-hidden="true">
+      <header className="flex h-[84px] items-center gap-[42px] border-b border-[#f6f5f7] px-9 mobile:h-[72px] mobile:flex-wrap mobile:gap-5 mobile:px-[18px] compact:gap-3">
+        <a
+          href="#bank"
+          className="flex items-center gap-2.5 text-[20px] font-bold tracking-[-0.8px] whitespace-nowrap mobile:gap-1.5 mobile:text-[17px] compact:text-[15px] compact:[&>span:last-child]:hidden"
+          aria-label="Token Bank 首页"
+        >
+          <span
+            className="text-[42px] leading-none font-normal text-accent mobile:text-[34px] compact:text-[28px]"
+            aria-hidden="true"
+          >
             ✳
           </span>
           <span>Token Bank</span>
         </a>
-        <nav aria-label="主导航">
-          <a className="active" href="#bank">
+        <nav
+          aria-label="主导航"
+          className="flex gap-[30px] text-[15px] text-muted mobile:gap-4 mobile:text-[13px] compact:gap-2.5"
+        >
+          <a className="font-semibold text-heading" href="#bank">
             存取
           </a>
           <a href="#activity">记录</a>
         </nav>
-        <div className="header-actions">
-          <span className="network-badge">
-            <span className="network-dot" />
+        <div className="ml-auto flex items-center gap-[22px] mobile:gap-2.5">
+          <span className="inline-flex items-center gap-2 text-[13px] whitespace-nowrap mobile:hidden">
+            <span className="size-[9px] rounded-full bg-[#8292f3] shadow-[0_0_0_4px_#f3f3ff]" />
             {connection.isConnected
               ? (connection.chain?.name ?? `网络 ${connection.chainId}`)
               : "未连接"}
@@ -49,13 +59,20 @@ export function BankClient() {
           <WalletButton />
         </div>
       </header>
-      <main id="bank">
-        <div className="hero-heading">
-          <p className="eyebrow">YOUR TOKENS. YOUR CONTROL.</p>
-          <h1>
-            你的资产，<span>随存随取。</span>
+      <main
+        id="bank"
+        className="bg-[radial-gradient(ellipse_470px_340px_at_50%_230px,#fff7fc,transparent)] px-5 pt-11 mobile:px-4 mobile:pt-[34px]"
+      >
+        <div className="mb-[30px] text-center mobile:mb-[26px]">
+          <p className="mb-3 text-[10px] font-medium tracking-[2.3px] text-[#9d8d99] mobile:text-[9px]">
+            YOUR TOKENS. YOUR CONTROL.
+          </p>
+          <h1 className="text-[clamp(28px,3.4vw,43px)] leading-[1.45] font-[650] tracking-[-2px] mobile:text-[30px] mobile:tracking-[-1.4px] compact:text-[26px]">
+            你的资产，<span className="text-[#d92aab]">随存随取。</span>
           </h1>
-          <p className="muted">从钱包到银行，每一笔都由你掌控。</p>
+          <p className="mt-2.5 text-[14px] text-muted mobile:text-[12px]">
+            从钱包到银行，每一笔都由你掌控。
+          </p>
         </div>
         <BankWorkspace
           key={sessionKey}
@@ -63,11 +80,11 @@ export function BankClient() {
           onBankChange={setBankAddress}
         />
       </main>
-      <footer className="site-footer">
-        <a href="#bank" className="muted">
+      <footer className="flex justify-between gap-4 px-9 pt-[30px] pb-[22px] text-[12px] mobile:px-4 mobile:py-[22px]">
+        <a href="#bank" className="text-muted">
           Token Bank
         </a>
-        <span className="small muted">
+        <span className="text-[12px] text-muted">
           {targetChain.name} · 链上余额，随时可查
         </span>
       </footer>
@@ -208,13 +225,17 @@ function BankWorkspace({
 
   return (
     <>
-      <section className="bank-card" aria-label="Token 存取款">
-        <div className="card-toolbar">
-          <div className="action-tabs">
+      <section
+        className="mx-auto w-full max-w-[484px] rounded-[28px] border border-line bg-white p-2.5 shadow-[0_8px_36px_#34212d06] mobile:rounded-3xl mobile:p-2"
+        aria-label="Token 存取款"
+      >
+        <div className="flex items-center justify-between px-2.5 pt-1 pb-3">
+          <div className="flex gap-5">
             {(["deposit", "withdraw"] as const).map((value) => (
               <button
                 key={value}
                 type="button"
+                className="border-0 bg-transparent px-px pt-2.5 pb-[7px] text-[16px] text-muted aria-pressed:font-[650] aria-pressed:text-heading"
                 aria-pressed={action === value}
                 disabled={busy}
                 onClick={() => {
@@ -249,13 +270,14 @@ function BankWorkspace({
           </button>
         </div>
         <form onSubmit={submit}>
-          <div className="amount-panel">
-            <label htmlFor="amount" className="muted">
+          <div className="rounded-[20px] border border-transparent bg-[#f8f7f9] px-5 py-[18px] focus-within:border-[#e9d6e5] mobile:p-4">
+            <label htmlFor="amount" className="text-[14px] text-muted">
               {deposit ? "从钱包存入" : "从银行取出"}
             </label>
-            <div className="amount-row">
+            <div className="mt-2.5 mb-2 flex items-center gap-4">
               <input
                 id="amount"
+                className="w-0 min-w-0 flex-1 border-0 bg-transparent p-0 text-[38px] font-normal tracking-[-1px] text-[#242127] outline-none placeholder:text-[#b5b1ba] mobile:text-[34px]"
                 name="amount"
                 type="text"
                 inputMode="decimal"
@@ -267,21 +289,24 @@ function BankWorkspace({
                 aria-describedby="amount-error"
                 onChange={(event) => setAmount(event.target.value)}
               />
-              <span className="token-pill">
-                <span className="token-mark" aria-hidden="true">
+              <span className="inline-flex max-w-[55%] shrink-0 items-center gap-[7px] rounded-[30px] border border-[#eeebf0] bg-white py-[5px] pr-2.5 pl-[5px] text-[16px] font-semibold wrap-anywhere mobile:text-[13px]">
+                <span
+                  className="grid size-[25px] shrink-0 place-items-center rounded-full bg-[#ede8fc] text-[13px] text-[#9072d7]"
+                  aria-hidden="true"
+                >
                   T
                 </span>
                 {symbol}
               </span>
             </div>
-            <div className="amount-bottom">
-              <span className="small muted balance-value">
+            <div className="flex items-baseline justify-between gap-2.5">
+              <span className="text-[12px] text-muted wrap-anywhere">
                 {deposit ? "钱包余额" : "可提余额"}{" "}
                 {snapshot ? formatted(available) : "—"}
               </span>
               <button
                 type="button"
-                className="max-button"
+                className="shrink-0 border-0 bg-transparent text-[12px] font-semibold text-[#dc11a4]"
                 disabled={!snapshot || busy || available === 0n}
                 onClick={() => setAmount(formatted(available))}
               >
@@ -289,18 +314,23 @@ function BankWorkspace({
               </button>
             </div>
           </div>
-          <div className="direction-separator" aria-hidden="true">
+          <div
+            className="relative z-1 mx-auto -my-3 grid size-9 place-items-center rounded-xl border-4 border-white bg-[#f3f1f5] text-[#6b6470]"
+            aria-hidden="true"
+          >
             ↓
           </div>
-          <div className="receive-panel">
-            <span className="muted">{deposit ? "存入银行" : "返回钱包"}</span>
-            <div className="receive-row">
+          <div className="rounded-[20px] bg-[#fbf9fc] px-5 pt-[19px] pb-[18px] mobile:p-4">
+            <span className="text-[14px] text-muted">
+              {deposit ? "存入银行" : "返回钱包"}
+            </span>
+            <div className="my-2 flex items-center justify-between gap-3">
               <span
-                className={`receive-amount ${!parsed ? "placeholder" : ""}`}
+                className={`min-w-0 text-[34px] leading-[1.4] tracking-[-0.8px] wrap-anywhere mobile:text-[29px] ${!parsed ? "text-[#b5b1ba]" : ""}`}
               >
                 {parsed ? formatted(parsed) : "0"}
               </span>
-              <span className="destination">
+              <span className="shrink-0 text-[13px] text-[#7c7280] mobile:text-[12px]">
                 {deposit
                   ? "Token Bank"
                   : address
@@ -309,7 +339,7 @@ function BankWorkspace({
                 <span aria-hidden="true"> ↗</span>
               </span>
             </div>
-            <p className="small muted">
+            <p className="text-[14px] wrap-anywhere text-muted">
               {snapshot && !amountError && resultingBalance !== undefined
                 ? `完成后我的银行存款 ${formatted(resultingBalance)} ${symbol}`
                 : "到账金额与输入金额一致"}
@@ -317,17 +347,17 @@ function BankWorkspace({
           </div>
           <p
             id="amount-error"
-            className="amount-error"
+            className="text-[12px] wrap-anywhere text-[#bc3654] not-empty:px-1 not-empty:py-2.5"
             role={amountError ? "alert" : undefined}
           >
             {amountError}
           </p>
           {!isConnected ? (
-            <WalletButton className="primary-button" />
+            <WalletButton className="primary-button mt-1.5" />
           ) : chainId !== targetChain.id ? (
             <button
               type="button"
-              className="primary-button"
+              className="primary-button mt-1.5"
               disabled={switchChain.isPending}
               onClick={() => switchChain.mutate({ chainId: targetChain.id })}
             >
@@ -338,7 +368,7 @@ function BankWorkspace({
           ) : !validBank ? (
             <button
               type="button"
-              className="primary-button"
+              className="primary-button mt-1.5"
               onClick={openSettings}
             >
               设置银行合约
@@ -346,7 +376,7 @@ function BankWorkspace({
           ) : (
             <button
               type="submit"
-              className="primary-button"
+              className="primary-button mt-1.5"
               disabled={busy || !snapshot || !parsed || !!amountError}
             >
               {busy
@@ -406,39 +436,66 @@ function BankWorkspace({
             </div>
           )}
         </form>
-        <p className="transaction-note">
+        <p className="px-1 pt-3.5 pb-1.5 text-center text-[11px] text-[#827787]">
           {deposit
             ? "授权不足时，仅授权本次金额，再确认存款。"
             : "取出后，Token 将转回当前连接的钱包。"}
         </p>
       </section>
-      <section className="balance-summary" aria-label="钱包与银行资产">
-        <div>
-          <span className="small muted">我的钱包余额</span>
-          <p data-testid="wallet-balance">
+      <section
+        className="mx-auto mt-[22px] grid w-full max-w-[640px] grid-cols-3 gap-5 px-4 mobile:grid-cols-1 mobile:gap-3 mobile:px-2"
+        aria-label="钱包与银行资产"
+      >
+        <div className="mobile:flex mobile:items-baseline mobile:justify-between mobile:gap-4">
+          <span className="text-[12px] text-muted mobile:shrink-0">
+            我的钱包余额
+          </span>
+          <p
+            className="mt-[5px] text-[17px] font-[550] wrap-anywhere mobile:text-[15px]"
+            data-testid="wallet-balance"
+          >
             {snapshot ? formatted(snapshot.walletBalance) : "—"}
-            <span className="small muted"> {snapshot ? symbol : ""}</span>
+            <span className="text-[12px] text-muted mobile:shrink-0">
+              {" "}
+              {snapshot ? symbol : ""}
+            </span>
           </p>
         </div>
-        <div>
-          <span className="small muted">我的银行存款</span>
-          <p data-testid="bank-balance">
+        <div className="border-l border-line pl-5 mobile:flex mobile:items-baseline mobile:justify-between mobile:gap-4 mobile:border-t mobile:border-l-0 mobile:pt-3 mobile:pl-0">
+          <span className="text-[12px] text-muted mobile:shrink-0">
+            我的银行存款
+          </span>
+          <p
+            className="mt-[5px] text-[17px] font-[550] wrap-anywhere mobile:text-[15px]"
+            data-testid="bank-balance"
+          >
             {snapshot ? formatted(snapshot.deposited) : "—"}
-            <span className="small muted"> {snapshot ? symbol : ""}</span>
+            <span className="text-[12px] text-muted mobile:shrink-0">
+              {" "}
+              {snapshot ? symbol : ""}
+            </span>
           </p>
         </div>
-        <div>
-          <span className="small muted">银行总资产</span>
-          <p data-testid="bank-assets">
+        <div className="border-l border-line pl-5 mobile:flex mobile:items-baseline mobile:justify-between mobile:gap-4 mobile:border-t mobile:border-l-0 mobile:pt-3 mobile:pl-0">
+          <span className="text-[12px] text-muted mobile:shrink-0">
+            银行总资产
+          </span>
+          <p
+            className="mt-[5px] text-[17px] font-[550] wrap-anywhere mobile:text-[15px]"
+            data-testid="bank-assets"
+          >
             {snapshot ? formatted(snapshot.bankAssets) : "—"}
-            <span className="small muted"> {snapshot ? symbol : ""}</span>
+            <span className="text-[12px] text-muted mobile:shrink-0">
+              {" "}
+              {snapshot ? symbol : ""}
+            </span>
           </p>
         </div>
       </section>
-      <p className="transaction-note">
+      <p className="px-1 pt-3.5 pb-1.5 text-center text-[11px] text-[#827787]">
         银行总资产为该合约持有的代币总量；你只能取出自己的银行存款。
       </p>
-      <div className="contract-details small muted">
+      <div className="mx-auto mt-5 flex flex-wrap justify-center gap-5 text-[11px] text-muted [&_a]:text-[#7c7280]">
         <span>
           银行{" "}
           <a
@@ -466,7 +523,7 @@ function BankWorkspace({
       </div>
       <TransferHistory account={address} snapshot={snapshot} />
       <dialog ref={settings} className="modal" aria-labelledby="settings-title">
-        <div className="section-heading">
+        <div className="flex items-center justify-between gap-4 [&_p]:mt-[7px] mobile:[&_h2]:text-[17px]">
           <h2 id="settings-title">银行合约设置</h2>
           <button
             type="button"
@@ -477,7 +534,7 @@ function BankWorkspace({
             ×
           </button>
         </div>
-        <p className="muted">
+        <p className="my-3.5 text-[13px] leading-[1.8] text-muted">
           填写 {targetChain.name} 上的 TokenBank
           地址。代币信息将从合约自动读取。
         </p>
@@ -493,11 +550,11 @@ function BankWorkspace({
             onBankChange(value)
           }}
         >
-          <label className="field-label" htmlFor="bank-address">
+          <label className="mt-5 mb-2 block text-[13px]" htmlFor="bank-address">
             银行合约地址
           </label>
           <input
-            className="address-input"
+            className="w-full rounded-xl border border-[#e7e0ea] bg-[#fcfafc] p-3.5 text-[13px]"
             id="bank-address"
             placeholder="0x…"
             value={draft}
@@ -506,17 +563,17 @@ function BankWorkspace({
             aria-invalid={!!settingsError}
             aria-describedby="settings-error"
           />
-          <p className="small muted">
+          <p className="mt-2.5 text-[12px] leading-[1.8] text-muted">
             请使用 TokenBank 地址，NFTMarket 和 Token 地址无法用于存取款。
           </p>
           <p
             id="settings-error"
-            className="amount-error"
+            className="text-[12px] wrap-anywhere text-[#bc3654] not-empty:px-1 not-empty:py-2.5"
             role={settingsError ? "alert" : undefined}
           >
             {settingsError}
           </p>
-          <button className="primary-button" type="submit">
+          <button className="primary-button mt-4" type="submit">
             保存合约
           </button>
         </form>

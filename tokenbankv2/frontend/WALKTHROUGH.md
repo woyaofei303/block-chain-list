@@ -11,7 +11,7 @@
 
 ## 0. 继续使用上一轮数据
 
-这是 2026-09-20 操作过的旧环境，**仅在原链状态仍存在时有效**：
+这是 `3180` 页面使用的本地环境。2026-09-20 原 Anvil 停止后，重新启动的链高度为 `0`，两个合约地址都没有代码；现已按下面的地址重新部署并开启状态保存。**这是新测试数据，旧链余额没有恢复。** 后续启动见[第 0.1 节](#01-本次重建后的启动方式)。
 
 ```text
 页面：http://127.0.0.1:3180
@@ -67,7 +67,61 @@ pnpm --dir tokenbankv2/frontend dev --port 3180
 
 不要同时在这个前端目录运行开发、构建和生产服务，它们会共用 `.next` 输出目录。页面已经正常运行时跳过上述启动命令，刷新即可。
 
-旧链停止且没有保存状态时，合约地址和 PostgreSQL 转账记录不能恢复链上余额；需按第 1 节建立新环境。若只是索引器停止，需使用它原来的数据库和启动配置恢复；新环境的 `session.env` 不适用于旧环境。下面的 `18546 / 13002 / 3181` 是独立复现流程，与本节二选一。
+旧链停止且没有保存状态时，合约地址和 PostgreSQL 转账记录不能恢复链上余额，需要重新部署。若只是索引器停止，需使用它原来的数据库和启动配置恢复。下面的 `18546 / 13002 / 3181` 是独立复现流程，与本节二选一。
+
+### 0.1 本次重建后的启动方式
+
+Anvil 默认将数据放在内存中。启动空节点只创建测试账户，不会自动部署项目合约；因此钱包能连接，但银行读取会失败。只有首次建链或丢失链状态时才需要执行[第 3 节的部署命令](#3-终端-b部署-token-和-tokenbank)。本次仍由同一部署账户按相同顺序部署，账户 nonce 分别为 `0`、`1`，所以合约地址与旧环境相同，但链上数据属于新的一轮。
+
+本次初始状态（后续以实际操作为准）：
+
+- `0x000071424bb08b910f0786e04d964a63d64bf1ba`：`10 ETH`、`100 BERC20`、个人银行存款 `0`。
+- `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`：`99999900 BERC20`、个人银行存款 `0`。
+- 银行总资产：`0 BERC20`。充值到钱包之后，还需要在页面点击“存入”并完成授权和存款，才会计入银行。
+- 新索引数据库：`tokenbank_local_20260920_rebuilt`。旧记录保留在 `erc20_indexer` 数据库的 `tokenbank_ui_13891` schema，没有混入新环境。
+
+运行数据仅保存在本机，不纳入 Git：
+
+```text
+output-tdd/tokenbank-local-recovery/anvil-state.json   链状态
+output-tdd/tokenbank-local-recovery/session.env        本轮启动配置，无私钥
+```
+
+服务已经运行时，只需刷新页面。服务停止后，先确认相应端口空闲，再分别在三个终端运行以下命令；**不要重新部署或重复充值**。
+
+终端 A：恢复同一份链状态，每秒保存一次，正常退出时也会保存。先检查文件，避免文件丢失时意外启动空链。
+
+```bash
+cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list
+test -s output-tdd/tokenbank-local-recovery/anvil-state.json && \
+anvil --host 127.0.0.1 --port 18545 \
+  --state output-tdd/tokenbank-local-recovery/anvil-state.json \
+  --state-interval 1 --preserve-historical-states --silent
+```
+
+终端 B：恢复索引服务，继续使用本次数据库与扫描进度。
+
+```bash
+cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list
+set -a
+source output-tdd/tokenbank-local-recovery/session.env
+set +a
+env -u DATABASE_URL -u PGOPTIONS node erc20-event-indexer/src/main.mjs
+```
+
+终端 C：启动前端。当前前端使用本轮配置完成了生产构建，可以直接启动；修改过源码或 `NEXT_PUBLIC_` 配置时，先停止前端，再构建。
+
+```bash
+cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list
+set -a
+source output-tdd/tokenbank-local-recovery/session.env
+set +a
+pnpm --dir tokenbankv2/frontend start --port 3180
+```
+
+构建命令为 `pnpm --dir tokenbankv2/frontend build`。不要在运行中的前端旁同时构建。保留状态文件、配置文件和 PostgreSQL 数据库；只有数据库或只有合约地址，都不能替代链状态文件。
+
+本次已实际停止并重新启动 Anvil，核对钱包余额、个人存款、银行总资产、区块哈希、充值回执、Transfer 日志和两个 API 入口，结果均保持一致。
 
 ## 1. 先确认环境与端口
 

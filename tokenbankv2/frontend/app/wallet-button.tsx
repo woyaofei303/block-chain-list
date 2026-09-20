@@ -6,7 +6,7 @@ import { errorMessage, shortAddress } from "@/lib/bank"
 import { targetChain } from "@/lib/wagmi"
 
 export function WalletButton({
-  className = "wallet-button",
+  className = "rounded-[30px] border border-[#ffe2f6] bg-[#fff0fa] px-[18px] py-2.5 text-[14px] font-semibold whitespace-nowrap text-[#dd08a1] hover:bg-[#ffe2f6] mobile:px-3 mobile:py-[9px] mobile:text-[12px]",
 }: {
   className?: string
 }) {
@@ -34,7 +34,7 @@ export function WalletButton({
         {isConnected && address ? shortAddress(address) : "连接钱包"}
       </button>
       <dialog ref={dialog} className="modal" aria-labelledby={titleId}>
-        <div className="section-heading">
+        <div className="flex items-center justify-between gap-4 [&_p]:mt-[7px] mobile:[&_h2]:text-[17px]">
           <h2 id={titleId}>{isConnected ? "我的钱包" : "连接钱包"}</h2>
           <button
             type="button"
@@ -47,15 +47,15 @@ export function WalletButton({
         </div>
         {isConnected && address ? (
           <>
-            <p className="muted">
+            <p className="my-3.5 text-[13px] leading-[1.8] text-muted">
               {connector?.id === "injected"
                 ? "浏览器默认钱包"
                 : connector?.name}
               {" · "}
               {chain?.name ?? "未配置的网络"}（{chainId}）
             </p>
-            <p className="address-text">{address}</p>
-            <p className="small muted">
+            <p className="my-5 text-[13px] wrap-anywhere">{address}</p>
+            <p className="mt-2.5 mb-3.5 text-[13px] leading-[1.8] text-muted">
               目标网络：{targetChain.name}（{targetChain.id}）
               {targetChain.id === 31337 && (
                 <>
@@ -64,12 +64,12 @@ export function WalletButton({
                 </>
               )}
             </p>
-            <p className="small muted">
+            <p className="mt-2.5 mb-3.5 text-[13px] leading-[1.8] text-muted">
               地址与钱包不一致时，请重新选择钱包，并在钱包的当前网站连接设置中核对账户和网络。
             </p>
             <button
               type="button"
-              className="primary-button"
+              className="primary-button mt-4"
               onClick={() => {
                 disconnect.mutate()
               }}
@@ -79,13 +79,14 @@ export function WalletButton({
           </>
         ) : (
           <>
-            <p className="muted">
+            <p className="my-3.5 text-[13px] leading-[1.8] text-muted">
               选择已安装的浏览器钱包，连接到 {targetChain.name}。
             </p>
-            <div className="wallet-options">
+            <div className="my-5 grid gap-2">
               {walletOptions.map((connector) => (
                 <button
                   key={connector.uid}
+                  className="flex items-center gap-3 rounded-[14px] border border-line bg-[#faf8fb] p-3.5 text-[14px] hover:border-[#edc8e3]"
                   type="button"
                   disabled={connect.isPending}
                   onClick={async () => {
@@ -105,17 +106,20 @@ export function WalletButton({
                     }
                   }}
                 >
-                  <span className="wallet-mark" aria-hidden="true">
+                  <span
+                    className="grid size-[30px] place-items-center rounded-[10px] bg-[#f8dff1] text-[#d53ca6]"
+                    aria-hidden="true"
+                  >
                     ↗
                   </span>
                   {connector.id === "injected" ? "浏览器钱包" : connector.name}
-                  <span className="ml-auto muted">
+                  <span className="ml-auto text-muted">
                     {connect.isPending ? "连接中…" : "→"}
                   </span>
                 </button>
               ))}
             </div>
-            <p className="small muted">
+            <p className="mt-2.5 mb-3.5 text-[13px] leading-[1.8] text-muted">
               连接只读取公开地址。存取款由你在钱包中确认。
             </p>
           </>

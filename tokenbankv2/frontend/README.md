@@ -4,6 +4,8 @@
 
 技术栈与 `multi-chat-py/web` 对齐：Next.js 16 App Router、React 19、TypeScript、Tailwind CSS 4、TanStack Query、pnpm、Biome、Husky 和 lint-staged。钱包连接使用 Wagmi，合约调用使用 Viem。
 
+样式统一使用 Tailwind CSS：布局、间距、字体、颜色及响应式状态写在组件的工具类中；`app/globals.css` 只保留 `@theme` 主题、基础样式和通过 `@apply` 复用的按钮、弹窗、提示。`mobile:` 与 `compact:` 分别对应原页面的 `640px`、`374px` 最大宽度断点，包含边界值。
+
 建议先读下面的账户与资金流程，再按 [从启动到验收的实操指南](WALKTHROUGH.md) 操作：
 
 - 继续使用之前 `3180` 页面的测试数据：从[复用上一轮环境](WALKTHROUGH.md#0-继续使用上一轮数据)开始。
