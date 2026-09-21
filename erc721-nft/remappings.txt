@@ -1,2 +1,0 @@
-forge-std/=../foundry-counter/lib/forge-std/src/
-@openzeppelin/contracts/=../foundry-counter/lib/openzeppelin-contracts/contracts/

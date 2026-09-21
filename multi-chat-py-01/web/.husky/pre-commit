@@ -1,0 +1,19 @@
+set -e
+pnpm --dir multi-chat-py-01/web precommit
+
+if git diff --cached --name-only -- erc20-event-indexer-12/ | grep -q .; then
+  npm --prefix erc20-event-indexer-12 run precommit
+fi
+
+if git diff --cached --name-only -- tokenbank-fullstack-13/frontend/ | grep -q .; then
+  pnpm --dir tokenbank-fullstack-13/frontend precommit
+fi
+
+if git diff --cached --name-only -- tokenbank-fullstack-13/backend/ tokenbank-fullstack-13/database/ | grep -q .; then
+  npm --prefix tokenbank-fullstack-13/backend run precommit
+fi
+
+if git diff --cached --name-only -- tokenbank-fullstack-13/contracts/ | grep -q .; then
+  forge fmt --root tokenbank-fullstack-13/contracts --check
+  forge test --root tokenbank-fullstack-13/contracts
+fi

@@ -5,11 +5,11 @@ permissions: {}
 on:
   push:
     paths:
-      - "foundry-counter/**"
+      - "foundry-counter-09/**"
       - ".github/workflows/foundry-counter.yml"
   pull_request:
     paths:
-      - "foundry-counter/**"
+      - "foundry-counter-09/**"
       - ".github/workflows/foundry-counter.yml"
   workflow_dispatch:
 
@@ -21,7 +21,7 @@ jobs:
       contents: read
     defaults:
       run:
-        working-directory: foundry-counter
+        working-directory: foundry-counter-09
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

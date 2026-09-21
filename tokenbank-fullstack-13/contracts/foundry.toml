@@ -1,0 +1,9 @@
+[profile.default]
+src = "src"
+test = "test"
+out = "../../output-tdd/tokenbank-fullstack-13/contracts/out"
+cache_path = "../../output-tdd/tokenbank-fullstack-13/contracts/cache"
+libs = []
+solc_version = "0.8.24"
+evm_version = "shanghai"
+optimizer = false
