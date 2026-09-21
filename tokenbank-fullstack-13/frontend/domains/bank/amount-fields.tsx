@@ -16,6 +16,7 @@ type AmountFieldsProps = {
   savedAmount?: string
 }
 
+/** 受控输入：工作区负责金额校验与提交；这里只展示精确金额和预估结果，不修改链上余额。 */
 export function AmountFields({
   action,
   amount,
@@ -34,6 +35,7 @@ export function AmountFields({
   const walletLabel = account ? shortAddress(account) : "我的钱包"
   const recipient = deposit ? "Token Bank" : walletLabel
   let description = "到账金额与输入金额一致"
+  // 恢复中的操作优先展示原金额，避免用交易后的余额再加减一次，给出错误预估。
   if (savedAmount !== undefined) {
     description = `已保存的${deposit ? "存款" : "取款"}金额 ${savedAmount} ${symbol}`
   } else if (snapshot && !amountError) {

@@ -119,3 +119,43 @@ test("刷新恢复保留操作编号与交易阶段，账户和网络隔离，�
   for (const key of values.keys()) values.set(key, "{bad")
   assert.throws(() => restoreIntent(storage, account, 31337, bank))
 })
+
+test("成功后释放当前操作的恢复记录，未确认或其他操作的记录不能清除", async () => {
+  const { clearConfirmedIntent, newOperationId, saveIntent, restoreIntent } = await import(
+    "../domains/operations/client.ts"
+  )
+  const values = new Map<string, string>()
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value)
+    },
+    removeItem: (key: string) => {
+      values.delete(key)
+    },
+  }
+  const intent = {
+    operationId: newOperationId(),
+    account: `0x${"a".repeat(40)}` as const,
+    bankAddress: `0x${"b".repeat(40)}` as const,
+    chainId: 31337,
+    action: "deposit" as const,
+    amount: "20",
+    amountRaw: "20000000000000000000",
+    phase: "unknown" as const,
+  }
+  const restore = () => restoreIntent(storage, intent.account, intent.chainId, intent.bankAddress)
+  saveIntent(storage, intent)
+  assert.throws(() => clearConfirmedIntent(storage, intent), /尚未确认/)
+  assert.deepEqual(restore(), intent)
+
+  const confirmed = { ...intent, phase: "confirmed" as const, businessHash: newOperationId() }
+  saveIntent(storage, confirmed)
+  clearConfirmedIntent(storage, confirmed)
+  assert.equal(restore(), undefined)
+
+  const next = { ...intent, operationId: newOperationId() }
+  saveIntent(storage, next)
+  assert.throws(() => clearConfirmedIntent(storage, confirmed), /已变化/)
+  assert.deepEqual(restore(), next)
+})

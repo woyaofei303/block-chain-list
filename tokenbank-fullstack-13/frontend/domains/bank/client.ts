@@ -29,6 +29,7 @@ const bankAbi = parseAbi([
   "function withdraw(uint256 amount, bytes32 operationId)",
 ])
 
+/** 展示文本转为合约最小单位；先检查精度，避免 parseUnits 舍入后改变用户输入的金额。 */
 export function parseAmount(text: string, decimals: number, available: bigint) {
   const value = text.trim()
   if (!/^\d+(\.\d+)?$/.test(value)) throw new Error("请输入有效的正数金额")
@@ -52,6 +53,7 @@ export type Snapshot = {
   idempotent: boolean
 }
 
+/** 钱包 RPC 边界：读取快照、模拟、签名与等待回执；HTTP 会话和最终业务核实见 operations/client.ts。 */
 export function createBank(
   provider: EIP1193Provider,
   chainId: number,
@@ -62,6 +64,7 @@ export function createBank(
 ) {
   if (!isAddress(bank) || bank === zeroAddress) throw new Error("请输入有效的银行合约地址")
   const check = () => signal?.throwIfAborted()
+  // 扩展钱包的 RPC 不经过 shared/request 的 HTTP 队列；取消后丢弃读结果并阻止后续步骤。
   const transport = custom(
     {
       request: async (args) => {
@@ -127,6 +130,7 @@ export function createBank(
       }),
     ])
     await assertSession()
+    // 探测新版幂等接口；旧银行仍可读，连接故障则继续抛出，不能误判成“不支持幂等”。
     const idempotent = await client
       .readContract({
         address: bank,
@@ -165,6 +169,7 @@ export function createBank(
       onBroadcast: (stage: "approval" | "business", hash: Hash) => void
     }
   ) {
+    // 回执只用于推进链上步骤；业务最终确认由后端按确认深度、操作标记和事件重新核实。
     async function confirm(hash: Hash, label: string) {
       check()
       progress(`${label}已提交，等待链上确认…`, hash)
@@ -189,6 +194,7 @@ export function createBank(
         severity: 2,
       })
     }
+    // 恢复时先等待已知哈希，避免为仍在打包的交易再次请求钱包签名。
     if (operation.businessHash) return confirm(operation.businessHash, "业务交易")
     if (operation.approvalHash) await confirm(operation.approvalHash, "授权")
     const state = await read()

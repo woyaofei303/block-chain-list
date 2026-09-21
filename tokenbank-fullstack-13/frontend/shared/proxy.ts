@@ -5,6 +5,7 @@ export async function proxy(request: Request, path: string) {
     return Response.json({ error: "Indexer URL is not configured" }, { status: 500 })
   const upstream = new URL(path, indexer)
   const headers = new Headers()
+  // 会话 Cookie、来源校验和幂等键必须一路到达 Express，浏览器只访问本站 /api 路由。
   for (const name of ["content-type", "cookie", "origin", "idempotency-key"]) {
     const value = request.headers.get(name)
     if (value) headers.set(name, value)

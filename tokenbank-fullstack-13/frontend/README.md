@@ -93,11 +93,15 @@ flowchart LR
   Chain -->|读取 Transfer 事件| Indexer[索引器]
   Indexer -->|保存记录与扫描进度| DB[(PostgreSQL)]
   UI -->|GET /api/transfers| Next[Next.js 同源代理]
+  UI -->|登录 / 保存操作 / 核实结果| Next
   Next -->|GET /transfers| Express[Express API]
+  Next -->|/auth /operations| Express
   Express -->|查询转账记录| DB
+  Express -->|保存会话与操作| DB
+  Express -->|核对操作标记、事件与回执| Chain
 ```
 
-前端通过钱包提供的 RPC 读取余额、请求签名和发送交易；Express 负责查询历史记录。数据库里的记录用于展示，不决定谁可以取款，也不会通过修改数据库改变链上余额。钱包连接只建立网站与账户的连接，不等于后端已经验证用户身份。
+前端通过钱包提供的 RPC 读取余额、请求签名和发送交易；Express 负责登录验证、操作登记、链上结果核实和历史查询。数据库不决定谁可以取款，也不会通过修改数据库改变链上余额。钱包连接只建立网站与账户的连接；首次操作还需 SIWE 登录签名，由服务端验证身份并建立会话。
 
 浏览器可以发起 REST 请求，本项目使用同源 `/api/transfers`，再由 Next.js 请求 Express。`address` 选择查询账户，`limit` 是条数，`offset` 是跳过条数；API 返回链、Token、精度、扫描进度和转账数组。实际请求示例见[前端代理核对](../WALKTHROUGH.md#6-终端-d启动页面并连接钱包)。
 
@@ -111,25 +115,37 @@ features/bank-workspace.tsx         余额查询、交易提交、终止与恢�
 domains/bank/amount-fields.tsx      金额输入、全部金额与到账预览
 domains/bank/bank-balances.tsx      三种余额与合约链接
 domains/bank/bank-settings-dialog.tsx  银行设置弹窗、草稿与地址校验
-domains/operations/operation-notice.tsx  已保存操作的核实、继续与新建入口
+domains/operations/operation-notice.tsx  未完成操作的核实与继续入口
+domains/operations/client.ts          保存业务意图、登录、登记与核实结果
 domains/wallet/wallet-button.tsx       钱包选择、连接与断开
 domains/transfers/transfer-history.tsx    转账记录、分页与定时刷新
 app/providers.tsx          Wagmi 与 React Query
 app/api/transfers/route.ts  开发 / 生产通用的同源 API 代理
+app/api/backend/[...path]/route.ts  登录与操作接口的同源入口
+shared/request.ts          HTTP 并发队列、响应校验与终止
+shared/query-client.ts      查询重试与统一错误入口
+shared/error-queue.ts       最多三条提示的合并、排序与故障抑制
+shared/error-toaster.tsx    展示队首提示并处理关闭
 app/globals.css             页面样式与移动端布局
 domains/bank/client.ts                 金额校验、合约读写
 domains/transfers/client.ts   索引结果校验
+domains/transfers/queries.ts  查询键、取消信号与刷新配置
 domains/wallet/config.ts                钱包网络与区块浏览器配置
 tests/                     Node 原生测试及本地链集成检查
 ```
 
-阅读页面时先看 `bank-dashboard.tsx` 的组合，再看 `bank-workspace.tsx` 的请求与交易流程，最后按需进入领域组件。金额和交易状态由工作区统一管理，展示组件通过明确的属性和回调交互；设置弹窗只管理自己的草稿。账户、网络、钱包连接或银行地址变化时，仍由工作区的 `key` 重建状态。
+阅读页面时先看 [bank-dashboard.tsx](features/bank-dashboard.tsx) 的组合，再看 [bank-workspace.tsx](features/bank-workspace.tsx) 的请求与交易流程，最后按需进入领域组件。金额和交易状态由工作区统一管理，展示组件通过明确的属性和回调交互；设置弹窗只管理自己的草稿。账户、网络、钱包连接或银行地址变化时，工作区的 `key` 重建界面状态，并按新作用域查找已保存的操作。
 
 ```text
 页面 → Wagmi 连接浏览器钱包 → Viem 读取 Token / TokenBank
-存款 → 检查余额与授权额度 → 授权不足时模拟并确认授权 → 模拟并确认存款
-取款 → 检查可提余额 → 模拟取款 → 钱包确认取款
-回执成功 → 重新读取链上余额
+首次提交 → 校验金额 → 保存 operationId 与参数 → SIWE 登录（已有有效会话则复用）
+  → 后端创建/复用操作 → 查询是否已完成
+  → 未完成：检查链上状态 → 存款按需授权 → 模拟并发送带原编号的存款/取款交易
+  → 保存哈希 → 等待回执 → 后端按确认深度核实操作与事件
+  → 已确认：显示成功提示 → 清除本笔恢复记录与输入金额 → 解锁表单 → 刷新余额与转账记录
+
+刷新页面 → 恢复已保存操作 → 等待用户选择“核实结果”或“使用原操作继续”
+终止请求 → 停止后续步骤与自动查询 → 保留操作编号和已知/晚返回的哈希
 
 浏览器 GET /api/transfers?address=…&limit=10&offset=0
   → Next.js 同源代理
@@ -137,23 +153,27 @@ tests/                     Node 原生测试及本地链集成检查
   → 前端核对网络、Token、账户、精度后显示记录
 ```
 
-页面每 15 秒刷新余额和记录。交易中的余额轮询暂停；交易确认后立即重新读取余额。索引器有独立的确认区块等待，刚成功的交易可能稍后才出现在记录中。后端不可用时显示错误，链上存取款仍可使用。
+页面每 15 秒刷新余额和记录。交易中的余额轮询暂停；操作核实成功后立即重新读取余额。索引器有独立的确认区块等待，刚成功的交易可能稍后才出现在记录中。链上余额查询不依赖 Express，但新版提交与恢复需要后端登录、操作和核实接口；单独的历史查询失败不会改变链上余额。
+
+成功后可直接输入下一笔金额或切换存取款，无需手动重置；再次提交才会创建新的操作编号。核实/继续按钮只出现在需要恢复的操作下，授权成功、失败或结果待核实不会清空这笔操作。旧版本已保存的成功记录仍先核实，成功后自动收起。
+
+对照源码串接后端与合约，见 [REQUESTS：阅读与调用顺序](../REQUESTS.md#1-阅读与调用顺序)。不要把 SIWE 登录、Token 授权、银行交易回执和历史索引完成当成同一个阶段。
 
 ## 1. 确认合约
 
-前端使用本项目的 [`../contracts/src/TokenBank.sol`](../contracts/src/TokenBank.sol)，要求 `token()`、`balances(address)`、`deposit(uint256)`、`withdraw(uint256)` 接口。
+新版存取款使用本项目的 [IdempotentTokenBank.sol](../contracts/src/IdempotentTokenBank.sol)，要求 `token()`、`balances(address)`、`operationHash(address,bytes32)`、`deposit(uint256,bytes32)`、`withdraw(uint256,bytes32)` 接口。旧 [TokenBank.sol](../contracts/src/TokenBank.sol) 保留供学习与历史环境使用，在当前页面仅可读取，不能提交存取款。
 
 - 银行地址必须是 TokenBank，不能填写 Token 或 NFTMarket 地址。
 - Sepolia 的现有 Token 为 `0xaa0ce32d799459b6a617a0c07cfc79b4048e4dbc`。
 - Base 的现有 ERC20WithCallback 为 `0xaddf9b7e606ad7ad04d474b2e6c3af47696b662c`。
 - Base 上的 `0x069b4ec66e0603b8ab012a5a2ec8a26cba4d3f16` 是 NFTMarket，不能用于本页面。
-- 若尚未部署银行，可在目标网络部署已有 TokenBank，构造参数填 Token 地址。公共网络部署需要你自行确认并支付该网络手续费。
+- 新建本地环境按 [WALKTHROUGH](../WALKTHROUGH.md) 部署幂等版银行，构造参数填本轮 BaseERC20 地址。上述公共链地址只是历史记录，不代表已部署兼容的新版银行。
 
 前端按标准“授权 + 存款”执行，不调用 `transferWithCallback`。直接把 Token 转到银行地址不会增加个人存款。
 
 ## 2. 启动 Express 索引器
 
-以下是已有合约时的配置参考，以 Sepolia 为例；本地完整部署请使用实操指南，避免把这组配置混入本地环境。
+以下是已有合约时的只读索引配置参考，以 Sepolia 为例；本地完整存取款环境请使用实操指南，避免把这组配置混入本地环境。
 
 需要 Node.js 24+、本机 PostgreSQL，以及目标网络 RPC。以下从本项目根目录执行；数据库不存在时先执行 `createdb erc20_indexer`。
 
@@ -176,6 +196,8 @@ PORT=3001
 ```
 
 `START_BLOCK` 是 Token 部署区块。前端钱包网络、银行的 `token()`、后端 `CHAIN_ID` / `TOKEN_ADDRESS` 必须一致。更换链或 Token 时使用独立的索引数据库。
+
+要启用新版写接口，还须配置 `BANK_ADDRESS` 为本轮幂等银行、`PUBLIC_ORIGIN` 为实际页面来源，且前后端银行地址一致；具体示例见 [REQUESTS：配置与运行](../REQUESTS.md#6-配置与运行)。只读索引配置本身不能完成新版存取款闭环。
 
 配置完成后，在 `backend` 目录启动并保持运行：
 
@@ -211,6 +233,8 @@ pnpm dev
 打开 `http://127.0.0.1:3000`。银行地址也可留空，在页面右上角的设置按钮中填写；页面输入只在本次页面会话有效，长期配置写入环境变量。
 
 支持网络：Sepolia `11155111`、Base `8453`、Anvil `31337`。配置其他链会明确报错。Base 使用 `https://basescan.org`；本地链可将区块浏览器设为空，并通过 `NEXT_PUBLIC_LOCAL_RPC_URL` 配置 RPC，默认 `http://127.0.0.1:8545`。
+
+未设置 `NEXT_PUBLIC_CHAIN_ID` 时默认使用本地 Foundry（`31337`）；Sepolia 和 Base 需要显式配置。复习时将网络、RPC、银行地址与 `INDEXER_URL` 保存到本目录 `.env.local`（已被 Git 忽略），Next.js 会在启动时自动读取，避免只在某次终端中 `export`、重启后丢失配置。`3180` 旧环境使用 `18545 / 13001`，`3181` 独立环境使用 `18546 / 13002`，按实际环境整组配置。
 
 `NEXT_PUBLIC_` 变量会进入浏览器，不能填写私钥、助记词或私有 RPC 密钥。`INDEXER_URL` 仅由 Next.js 服务端读取。旧的 `VITE_` 环境变量和 Vite 启动方式已移除。
 

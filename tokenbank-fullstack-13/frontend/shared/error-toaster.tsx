@@ -5,6 +5,7 @@ import { Toaster, toast } from "sonner"
 import { type ErrorNotice, errors } from "./error-queue"
 
 const empty: ErrorNotice[] = []
+/** 全局只挂载一次；队列负责合并和容量，这里负责将队首显示为 Sonner 提示。 */
 export function ErrorToaster() {
   const notices = useSyncExternalStore(errors.subscribe, errors.snapshot, () => empty)
   const current = notices[0]

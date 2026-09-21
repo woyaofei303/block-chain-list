@@ -8,6 +8,10 @@ type BankSettingsDialogProps = {
   onClose: () => void
 }
 
+/**
+ * 工作区仅在打开时挂载弹窗，因此每次打开都从当前银行地址重新建立草稿。
+ * 校验后由 onBankChange 更新页面地址，触发工作区 key 变化；取消关闭不会提交草稿。
+ */
 export function BankSettingsDialog({
   bankAddress,
   onBankChange,

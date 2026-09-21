@@ -83,6 +83,8 @@ export function WalletButton({
             </p>
             <div className="my-5 grid gap-2">
               {walletOptions.map((connector) => {
+                // 扩展提供的图标可能带首尾换行；先清理，空值沿用缺省图标，避免 Image 渲染抛错。
+                const icon = connector.icon?.trim()
                 // 列表共用一次连接请求，仅发起该请求的钱包显示等待状态。
                 const pending = connect.isPending && connect.variables?.connector === connector
                 return (
@@ -109,9 +111,9 @@ export function WalletButton({
                       }
                     }}
                   >
-                    {connector.icon ? (
+                    {icon ? (
                       <Image
-                        src={connector.icon}
+                        src={icon}
                         alt=""
                         width={30}
                         height={30}

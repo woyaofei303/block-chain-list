@@ -7,9 +7,11 @@ export type ErrorNotice = {
   count: number
   shownAt?: number
 }
+/** items[0] 正在展示，其余等待；总容量为 3，ErrorToaster 只消费队首。 */
 export class ErrorQueue {
   private items: ErrorNotice[] = []
   private sequence = 0
+  // source 标识哪一个查询/写操作失败，key 标识可合并的错误；恢复时只解除相关故障的抑制。
   private faults = new Map<string, string>()
   private muted = new Set<string>()
   private listeners = new Set<() => void>()
@@ -43,6 +45,7 @@ export class ErrorQueue {
       }
     } else {
       if (this.items.length === 3) {
+        // 只从等待项挑出最低等级、最晚到达的一条；新错误更严重才替换，当前提示不被打断。
         const candidates = this.items
           .slice(1)
           .sort((a, b) => a.error.severity - b.error.severity || b.id - a.id)
@@ -65,6 +68,7 @@ export class ErrorQueue {
     this.publish()
   }
   dismiss(id: number) {
+    // 自动到期和手动关闭可能重复回调；旧 id 不得继续移除下一条提示。
     if (this.items[0]?.id !== id) return
     if ([...this.faults.values()].includes(this.items[0].key)) this.muted.add(this.items[0].key)
     this.items = this.items.slice(1)

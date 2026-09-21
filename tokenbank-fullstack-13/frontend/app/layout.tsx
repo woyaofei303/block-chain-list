@@ -9,8 +9,9 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Bybit 等钱包会在 React 接管前注入 html 属性；仅容忍根元素差异，子组件仍执行 hydration 校验。
   return (
-    <html lang="zh-CN" className="h-full">
+    <html lang="zh-CN" className="h-full" suppressHydrationWarning>
       <body className="min-h-full">
         <Providers>{children}</Providers>
       </body>

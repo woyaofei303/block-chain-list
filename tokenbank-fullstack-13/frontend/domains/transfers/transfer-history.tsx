@@ -9,6 +9,7 @@ import { errors } from "@/shared/error-queue"
 import { errorMessage, shortAddress } from "@/shared/web3"
 import { transferOptions } from "./queries"
 
+/** 先取得银行快照中的 Token/精度，再查询对应历史；索引记录不参与个人可提余额计算。 */
 export function TransferHistory({
   account,
   snapshot,
@@ -29,6 +30,7 @@ export function TransferHistory({
     },
     offset
   )
+  // 同时关闭自动启动和定时器，确保点击终止后，页面聚焦或重新联网也不会重启本查询。
   const history = useQuery({
     ...options,
     enabled: !!account && !!snapshot && !stopped,

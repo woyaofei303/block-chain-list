@@ -3,6 +3,7 @@ import { AppError } from "./errors.ts"
 
 // 一个标签页内所有调用共享名额；只在真正发送后开始超时计时。
 const queue = new PQueue({ concurrency: 6 })
+/** HTTP 统一入口：领域层通过 parse 校验响应；重试与 Toast 交给 QueryClient，不在这里重复处理。 */
 export async function request<T>(
   url: string,
   options: {
@@ -34,6 +35,7 @@ export async function request<T>(
           body: options.body === undefined ? undefined : JSON.stringify(options.body),
           signal,
         })
+        // 读取完响应体才释放并发名额；只等响应头会漏算仍在下载的请求。
         const data: unknown = await response.json().catch(() => null)
         signal.throwIfAborted()
         if (!response.ok) {
@@ -70,6 +72,7 @@ export async function request<T>(
         clearTimeout(timer)
       }
     },
+    // 同一个信号同时取消等待任务和在途 fetch，不清空其他批次共用的队列。
     { signal: options.signal }
   )
 }

@@ -6,15 +6,17 @@ type OperationNoticeProps = {
   busy: boolean
   onVerify: () => void
   onContinue: () => void
-  onNewOperation: () => void
 }
 
+/**
+ * 恢复入口只分发用户选择：核实/继续保留原编号，本次核实成功后由工作区自动收起。
+ * 持久化和实际执行由 BankWorkspace 处理，关闭其他错误提示不会清除这里的操作状态。
+ */
 export function OperationNotice({
   intent,
   busy,
   onVerify,
   onContinue,
-  onNewOperation,
 }: OperationNoticeProps): JSX.Element {
   return (
     <div className="notice info">
@@ -30,11 +32,6 @@ export function OperationNotice({
         {intent.phase !== "confirmed" && (
           <button type="button" className="text-button" disabled={busy} onClick={onContinue}>
             使用原操作继续
-          </button>
-        )}
-        {intent.phase === "confirmed" && (
-          <button type="button" className="text-button" disabled={busy} onClick={onNewOperation}>
-            新的一笔
           </button>
         )}
       </div>

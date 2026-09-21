@@ -28,7 +28,8 @@ declare module "wagmi" {
   }
 }
 
-const configuredChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? sepolia.id)
+// 未提供启动配置时默认本地链；公共网络必须通过环境变量明确选择。
+const configuredChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? foundry.id)
 
 const configuredChain = chains.find((chain) => chain.id === configuredChainId)
 if (!configuredChain) throw new Error("NEXT_PUBLIC_CHAIN_ID 仅支持 11155111、8453、31337")

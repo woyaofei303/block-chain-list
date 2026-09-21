@@ -4,12 +4,17 @@
 
 ## 1. 阅读与调用顺序
 
-1. `frontend/shared/request.ts`：只返回校验后的数据或抛出错误；统一 fetch、HTTP 状态、响应读取、10 秒超时和 AbortSignal。
-2. `frontend/domains/transfers/client.ts`、`queries.ts`：领域响应校验和 queryOptions；键包含网络、Token、账户、精度、分页。银行余额仍由 Viem 读取链上合约。
-3. `frontend/shared/query-client.ts` → `error-queue.ts` → `error-toaster.tsx`：缓存层收集最终失败，队列合并、排序、抑制，Sonner 显示一条。组件保留行内错误，不重复弹提示。
-4. `frontend/domains/operations/client.ts`：保存业务意图、SIWE 登录、创建/恢复操作、登记哈希、核实结果；`frontend/features/bank-workspace.tsx` 使用 useMutation 编排界面和同步提交锁，`bank-dashboard.tsx` 负责页面布局与工作区切换。
-5. `backend/src/operations/router.ts` → `repository.ts` / `chain.ts`：HTTP 输入校验和身份验证、数据库事务、规范链证据核对。
-6. `contracts/src/IdempotentTokenBank.sol`：同账户、同操作编号最多一次资金效果。保留 `TokenBank.sol` 及历史部署，不能原地升级旧银行。
+建议按一次页面操作的顺序阅读；源码中的中文注释标明状态归属、跨模块入口和不能合并的阶段。
+
+1. [app/page.tsx](frontend/app/page.tsx) → [bank-dashboard.tsx](frontend/features/bank-dashboard.tsx) → [bank-workspace.tsx](frontend/features/bank-workspace.tsx)：页面组合、会话切换、查询、同步提交锁与终止入口。[providers.tsx](frontend/app/providers.tsx) 为页面提供稳定的 QueryClient 和全局 Toast。
+2. [bank/client.ts](frontend/domains/bank/client.ts) 的 `read` / `parseAmount`：从合约读取三种余额和精度，再校验用户输入。金额、余额、设置和操作提示组件只接收属性与回调；设置弹窗另有自己的草稿。
+3. 工作区 `submit` → [operations/client.ts](frontend/domains/operations/client.ts) 的 `executeIntent`：先保存意图，再登录、创建/复用操作、核实结果。需要继续链上执行时调用 `bank/client.ts` 的 `transact`，随后登记哈希并再次核实。
+4. [request.ts](frontend/shared/request.ts) → [同源操作路由](frontend/app/api/backend/[...path]/route.ts) → [proxy.ts](frontend/shared/proxy.ts) → [后端 router.ts](backend/src/operations/router.ts)：HTTP 排队、超时和取消贯穿请求；代理转交会话与幂等键，后端验证身份和输入。[repository.ts](backend/src/operations/repository.ts) 管理数据库唯一约束与事务。
+5. 钱包调用 [IdempotentTokenBank.sol](contracts/src/IdempotentTokenBank.sol)；后端 [chain.ts](backend/src/operations/chain.ts) 核实操作标记、事件和规范回执。同账户、同操作编号最多一次资金效果；前端不能仅凭哈希登记成功就显示业务成功。旧 `TokenBank.sol` 与历史部署保留，不能原地升级。
+6. 工作区 `onSuccess` 清除本笔已确认的恢复记录、清空金额并恢复表单，保留金额与交易哈希的成功提示，同时刷新余额和记录；[transfer-history.tsx](frontend/domains/transfers/transfer-history.tsx) → [queries.ts](frontend/domains/transfers/queries.ts) → [transfers/client.ts](frontend/domains/transfers/client.ts) 查询索引结果并校验身份。键包含网络、Token、账户、精度、分页；历史记录可能晚于链上余额更新。
+7. 查询或提交的最终失败 → [query-client.ts](frontend/shared/query-client.ts) → [error-queue.ts](frontend/shared/error-queue.ts) → [error-toaster.tsx](frontend/shared/error-toaster.tsx)：缓存层报告错误，队列合并、排序、抑制，Sonner 显示一条。组件保留行内错误，不重复弹提示。
+
+阅读恢复逻辑时，重点对照工作区的 `run` / `stop` 与 `executeIntent` 的 `send` / `check` / `save`：`send=false` 只核实业务结果，必要时仍需登录、创建/复用记录或登记已知哈希；`send=true` 才允许继续授权和存取款步骤。两者复用原编号。`check` 阻止终止后的下一步，`save` 保留晚返回的哈希；浏览器终止不能撤销已经提交的链上交易。
 
 没有新增通用 useRequest、订单框架、队列服务或跨项目依赖。当前业务只有 TokenBank，HTTP 下单场景应复用“业务写入与幂等结果同事务提交”的模式；不要把链上确认误当作可与 PostgreSQL 原子提交的本地写入。
 
@@ -48,7 +53,7 @@ const results = await Promise.allSettled(
 
 ## 4. 操作编号、登录与 API
 
-首次提交生成随机非零 `bytes32 operationId`，在钱包请求前保存至 localStorage。作用域是网络、银行和账户；保存金额（展示文本和精确最小单位）、授权哈希、业务哈希、阶段。刷新或拒签后只恢复该操作，点击“使用原操作继续”仍用原编号；成功后点“新的一笔”才允许生成新编号。损坏的本地记录阻止新提交，不能静默丢弃。
+首次提交生成随机非零 `bytes32 operationId`，在钱包请求前保存至 localStorage。作用域是网络、银行和账户；保存金额（展示文本和精确最小单位）、授权哈希、业务哈希、阶段。刷新或拒签后只恢复该操作，点击“使用原操作继续”仍用原编号。本次后端核实成功后，自动清除这笔恢复记录、清空金额并显示存入/取出成功，无需点击“新的一笔”；用户再次输入并提交时才生成新编号。输入或切换存取款会收起上一笔的成功提示。待核实、失败、终止或损坏的记录仍保留，不能为解锁表单而丢弃；旧版本留下的已确认记录也先核实，再自动收起。
 
 首次提交需要一次 SIWE 登录签名，不扣款、不进行代币授权。服务端验证一次性 nonce、签名钱包、域名、URI、链、签发时间和有效期，事务内消费 nonce，创建 12 小时 HttpOnly / SameSite=Strict 会话。HTTPS 环境设置 Secure；写接口同时检查 Origin 和 JSON 类型。签名、Cookie 和数据库凭据不得写入日志。
 

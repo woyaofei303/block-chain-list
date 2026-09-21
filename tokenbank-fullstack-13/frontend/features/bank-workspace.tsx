@@ -8,9 +8,9 @@ import { BankBalances } from "@/domains/bank/bank-balances"
 import { BankSettingsDialog } from "@/domains/bank/bank-settings-dialog"
 import { createBank, parseAmount } from "@/domains/bank/client"
 import {
+  clearConfirmedIntent,
   executeIntent,
   type Intent,
-  intentKey,
   newOperationId,
   restoreIntent,
   saveIntent,
@@ -23,6 +23,10 @@ import { errors } from "@/shared/error-queue"
 import { asAppError } from "@/shared/errors"
 import { errorMessage, shortAddress } from "@/shared/web3"
 
+/**
+ * 当前钱包会话的流程入口：余额查询 → 金额校验 → 保存意图 → executeIntent → 刷新余额与记录。
+ * 金额、操作和终止状态由这里持有；领域组件通过属性展示，通过回调把操作交回这里。
+ */
 export function BankWorkspace({
   bankAddress,
   onBankChange,
@@ -36,6 +40,7 @@ export function BankWorkspace({
   const [action, setAction] = useState<"deposit" | "withdraw">("deposit")
   const [amount, setAmount] = useState("")
   const [intent, setIntent] = useState<Intent>()
+  // stopped 控制查询是否可自动启动；mutation.isPending 只表示这次提交是否仍在执行。
   const [stopped, setStopped] = useState(false)
   const [storageError, setStorageError] = useState(false)
   const execution = useRef<AbortController | null>(null)
@@ -45,6 +50,7 @@ export function BankWorkspace({
     hash?: Hash
   }>()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // active 拦住旧工作区的异步回调；locked 同步拦住 React 更新按钮状态前的连续点击。
   const active = useRef(true)
   const locked = useRef(false)
   useEffect(() => {
@@ -72,6 +78,7 @@ export function BankWorkspace({
       current.connector?.uid === connector?.uid
     )
   }
+  // 刷新或切换回此账户时只恢复记录，由用户选择核实或继续，不能自动另建一笔。
   useEffect(() => {
     if (!address || !isAddress(bankAddress)) return
     try {
@@ -104,6 +111,7 @@ export function BankWorkspace({
         isCurrent,
         send,
         persist: (saved) => {
+          // 钱包可能在工作区卸载后才返回哈希：仍保存到原账户的记录，但不更新旧界面。
           saveIntent(localStorage, saved)
           if (active.current) setIntent(saved)
         },
@@ -113,10 +121,15 @@ export function BankWorkspace({
       })
     },
     onSuccess: (saved) => {
+      // executeIntent 成功表示后端已核实业务；Transfer 索引可能尚未追上，分别刷新两类数据。
       if (!isCurrent() || execution.current?.signal.aborted) return
+      // 完成的意图退出恢复流程，表单准备好下一笔；新编号仍只在用户再次提交时生成。
+      clearConfirmedIntent(localStorage, saved)
+      setIntent(undefined)
+      setAmount("")
       setStopped(false)
       setStatus({
-        message: "业务已确认。转账记录将在索引完成后显示。",
+        message: `${saved.action === "deposit" ? "存入" : "取出"}成功：${saved.amount} ${snapshot?.symbol ?? "Token"}。`,
         tone: "success",
         hash: saved.businessHash,
       })
@@ -133,6 +146,7 @@ export function BankWorkspace({
     },
   })
   const busy = mutation.isPending
+  // 账户、网络、银行和连接共同隔离余额缓存；读取失败时不把旧快照作为当前可用余额。
   const balanceKey = [
     "balance",
     targetChain.id,
@@ -174,6 +188,7 @@ export function BankWorkspace({
     setSettingsOpen(true)
   }
 
+  // send=false 只核实结果；true 允许继续原操作的授权/业务步骤，两者都沿用 value.operationId。
   function run(value: Intent, send: boolean) {
     if (locked.current) return
     locked.current = true
@@ -205,6 +220,7 @@ export function BankWorkspace({
       phase: "prepared",
     }
     try {
+      // 先落盘再登录/请求钱包，响应丢失或刷新后才能用同一编号恢复；保存失败则禁止提交。
       saveIntent(localStorage, value)
       setIntent(value)
       run(value, true)
@@ -214,6 +230,8 @@ export function BankWorkspace({
     }
   }
   function stop() {
+    // 终止本次写入流程，并取消本工作区的读请求；stopped 继续阻止轮询、聚焦和重连触发查询。
+    // 这不会撤销已广播交易，也不能关闭钱包弹窗；晚返回的哈希仍由 persist 保存。
     execution.current?.abort()
     setStopped(true)
     void queryClient.cancelQueries({ queryKey: balanceKey })
@@ -279,7 +297,10 @@ export function BankWorkspace({
           <AmountFields
             action={action}
             amount={amount}
-            onAmountChange={setAmount}
+            onAmountChange={(value) => {
+              setAmount(value)
+              setStatus(undefined)
+            }}
             account={address}
             snapshot={snapshot}
             available={available}
@@ -324,21 +345,12 @@ export function BankWorkspace({
               终止请求
             </button>
           )}
-          {intent && (
+          {intent && !busy && (
             <OperationNotice
               intent={intent}
               busy={busy}
               onVerify={() => run(intent, false)}
               onContinue={() => run(intent, true)}
-              onNewOperation={() => {
-                localStorage.removeItem(
-                  intentKey(intent.account, intent.chainId, intent.bankAddress)
-                )
-                setIntent(undefined)
-                setAmount("")
-                setStatus(undefined)
-                setStopped(false)
-              }}
             />
           )}
           {stopped && !intent && (

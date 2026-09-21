@@ -13,6 +13,7 @@ import { AppError, asAppError } from "../../shared/errors.ts"
 import { request } from "../../shared/request.ts"
 import { createBank } from "../bank/client.ts"
 
+/** 一次业务意图的恢复记录；phase 是本地进度，重新进入页面后仍须向后端核实链上结果。 */
 export type Intent = {
   operationId: Hash
   account: Address
@@ -25,6 +26,7 @@ export type Intent = {
   approvalHash?: Hash
   businessHash?: Hash
 }
+// 每个账户/网络/银行保存一笔待处理操作，防止切换钱包后把旧意图带到另一作用域。
 export const intentKey = (account: string, chainId: number, bank: string) =>
   `tokenbank:operation:${chainId}:${bank.toLowerCase()}:${account.toLowerCase()}`
 export const newOperationId = () => bytesToHex(crypto.getRandomValues(new Uint8Array(32)))
@@ -35,6 +37,7 @@ function record(value: unknown): Record<string, unknown> {
     throw new Error("服务端返回无效数据")
   return value as Record<string, unknown>
 }
+// localStorage 也属于不可信输入：损坏时保留原记录并报错，不能静默清空后另建一笔。
 export function restoreIntent(
   storage: Pick<Storage, "getItem">,
   account: Address,
@@ -69,6 +72,18 @@ export function saveIntent(storage: Pick<Storage, "setItem">, intent: Intent) {
     JSON.stringify(intent)
   )
 }
+/** 仅在后端本次核实成功后解除恢复锁；不能清除待核实或被其他标签页替换的操作。 */
+export function clearConfirmedIntent(
+  storage: Pick<Storage, "getItem" | "removeItem">,
+  intent: Intent
+) {
+  if (intent.phase !== "confirmed") throw new Error("操作尚未确认，请先核实结果")
+  const saved = restoreIntent(storage, intent.account, intent.chainId, intent.bankAddress)
+  if (saved && saved.operationId !== intent.operationId)
+    throw new Error("本地操作已变化，请刷新后核实")
+  storage.removeItem(intentKey(intent.account, intent.chainId, intent.bankAddress))
+}
+// SIWE 签名只证明登录身份；ERC20 approve 和银行存取款是后面独立的链上交易。
 async function authenticate(provider: EIP1193Provider, intent: Intent, signal: AbortSignal) {
   const parseSession = (data: unknown) => {
     const value = record(data)
@@ -157,7 +172,11 @@ function parseOperation(data: unknown, intent: Intent) {
   }
 }
 
-// persist 在钱包返回后先执行，即使页面已终止，也不能丢失晚返回的交易哈希。
+/**
+ * 工作区提交/恢复的共同流程：登录 → 创建或复用操作 → 核实 → 按需链上执行 → 再核实。
+ * operationId 同时用于 HTTP 幂等键和合约参数；send=false 仍可登录和登记信息，但不发存取款交易。
+ * persist 在钱包返回后先执行，即使页面已终止，也不能丢失晚返回的交易哈希。
+ */
 export async function executeIntent(
   intent: Intent,
   options: {
@@ -196,6 +215,7 @@ export async function executeIntent(
     progress("请确认钱包登录，正在恢复操作记录…")
     await authenticate(provider, intent, signal)
     check()
+    // 后端按会话账户与编号复用记录，参数冲突返回 409；HTTP 成功仅代表业务意图已登记。
     await request("/api/backend/operations", {
       method: "POST",
       headers: { "Idempotency-Key": intent.operationId },
@@ -205,6 +225,7 @@ export async function executeIntent(
     })
     check()
     if (current.businessHash) await register(current.businessHash)
+    // 先查询再决定是否执行：即使浏览器丢了哈希，后端仍能按编号查到原合约事件。
     let result = await inspect()
     check()
     if (result.status !== "confirmed" && options.send) {
@@ -232,6 +253,7 @@ export async function executeIntent(
       })
       check()
       if (current.businessHash) await register(current.businessHash)
+      // 登记哈希只是提供查询线索；后端 chain.ts 核对规范链证据后才会返回 confirmed。
       result = await inspect()
       check()
     }

@@ -9,6 +9,7 @@ type BankBalancesProps = {
   snapshot?: Snapshot
 }
 
+/** 共用工作区读到的链上快照，不另发请求；缺少快照显示“—”，不能将查询失败显示成零余额。 */
 export function BankBalances({ bankAddress, snapshot }: BankBalancesProps): JSX.Element {
   const validBank = isAddress(bankAddress) && bankAddress !== zeroAddress
   const symbol = snapshot?.symbol ?? "TOKEN"

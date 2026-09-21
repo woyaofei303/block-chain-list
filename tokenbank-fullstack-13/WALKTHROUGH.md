@@ -6,14 +6,14 @@
 
 先阅读 [账户、代币、银行和请求流程](frontend/README.md#先理解账户代币和银行)，再选择下面的入口：
 
-- 继续使用之前 `3180` 页面里的数据：只读[第 0 节](#0-继续使用上一轮数据)，再进行页面操作，不要重复部署和充值。
+- 继续使用之前 `3180` 页面里的数据：先读[第 0 节](#0-继续使用上一轮数据)，再进行页面操作，不要重复部署和充值。
 - 从零复现：按第 1～9 节完成本地流程。它使用独立 Anvil 和新建数据库，不需要公共网络 ETH，也不需要向终端提供钱包私钥。
 - 服务已就绪：[连接钱包](#6-终端-d启动页面并连接钱包) → [存取款](#7-页面操作存款取款与余额验收) → [切换账户核对](#75-切换账户验证同一家银行)。
 - 遇到异常：看[第 11 节](#11-按现象排查)。公共网络是另一条路径，见[第 10 节](#10-切换到-sepolia--base)。
 
 ## 0. 继续使用上一轮数据
 
-这是 `3180` 页面使用的本地环境。2026-09-20 原 Anvil 停止后，重新启动的链高度为 `0`，两个合约地址都没有代码；现已按下面的地址重新部署并开启状态保存。**这是新测试数据，旧链余额没有恢复。** 后续启动见[第 0.1 节](#01-本次重建后的启动方式)。
+这是 `3180` 页面使用的本地环境。2026-09-20 原 Anvil 停止后重新建链，并开启状态保存；旧链余额没有恢复。2026-09-21 在这条持续运行的链上新增了幂等版银行，复用原 Token 和数据库，页面已切换到新版。后续启动见[第 0.1 节](#01-本次重建后的启动方式)。
 
 ```text
 页面：http://127.0.0.1:3180
@@ -21,7 +21,8 @@ Express API：http://127.0.0.1:13001/transfers
 钱包 / 前端 / 索引器 RPC：http://127.0.0.1:18545
 Chain ID：31337
 
-TokenBank：0xe7f1725e7734ce288f8367e1bb143e90bb3f0512
+当前 IdempotentTokenBank：0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
+旧版 TokenBank（保留、只读）：0xe7f1725e7734ce288f8367e1bb143e90bb3f0512
 Token：0x5FbDB2315678afecb367f032d93F642f64180aa3
 Token 名称 / 符号 / 精度：BaseERC20 / BERC20 / 18
 部署账户：0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
@@ -30,13 +31,15 @@ Token 名称 / 符号 / 精度：BaseERC20 / BERC20 / 18
 
 打开 [3180 页面](http://127.0.0.1:3180)，连接自己之前操作的账户，在 MetaMask 当前网站的网络设置中确认 RPC 是 `18545`。页面齿轮里的银行地址应与上面一致；添加自定义代币时则使用 **Token 地址**。之前转入的 100 BERC20 可能已经存入或取出，以现在的链上余额为准。
 
+切换新版时，该钱包余额为 `94 BERC20`，旧银行存款为 `6 BERC20`，新银行存款为 `0`。这次没有迁移或取出旧存款；页面显示的是当前银行的存款，历史记录仍包含同一 Token 的旧交易。要查看旧银行，可在齿轮中临时输入旧地址；存取款请使用上面的新版地址。
+
 下面只检查服务和读取数据，不部署、不转账。变量放在子 shell 内，避免影响之后新环境的配置：
 
 ```bash
 lsof -nP -iTCP:18545 -iTCP:13001 -iTCP:3180 -sTCP:LISTEN
 (
   TOKENBANK_PREVIEW_RPC=http://127.0.0.1:18545
-  TOKENBANK_PREVIEW_BANK=0xe7f1725e7734ce288f8367e1bb143e90bb3f0512
+  TOKENBANK_PREVIEW_BANK=0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
   TOKENBANK_PREVIEW_TOKEN=0x5FbDB2315678afecb367f032d93F642f64180aa3
   TOKENBANK_PREVIEW_WALLET=0x000071424bb08b910f0786e04d964a63d64bf1ba
 
@@ -60,7 +63,7 @@ lsof -nP -iTCP:18545 -iTCP:13001 -iTCP:3180 -sTCP:LISTEN
 ```bash
 cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/tokenbank-fullstack-13
 NEXT_PUBLIC_CHAIN_ID=31337 \
-NEXT_PUBLIC_BANK_ADDRESS=0xe7f1725e7734ce288f8367e1bb143e90bb3f0512 \
+NEXT_PUBLIC_BANK_ADDRESS=0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9 \
 NEXT_PUBLIC_LOCAL_RPC_URL=http://127.0.0.1:18545 \
 NEXT_PUBLIC_EXPLORER_URL='' \
 INDEXER_URL=http://127.0.0.1:13001 \
@@ -75,7 +78,7 @@ pnpm --dir frontend dev --port 3180
 
 Anvil 默认将数据放在内存中。启动空节点只创建测试账户，不会自动部署项目合约；因此钱包能连接，但银行读取会失败。只有首次建链或丢失链状态时才需要执行[第 3 节的部署命令](#3-终端-b部署-token-和-tokenbank)。本次仍由同一部署账户按相同顺序部署，账户 nonce 分别为 `0`、`1`，所以合约地址与旧环境相同，但链上数据属于新的一轮。
 
-本次初始状态（后续以实际操作为准）：
+2026-09-20 重建时的初始状态（后续以实际操作为准）：
 
 - `0x000071424bb08b910f0786e04d964a63d64bf1ba`：`10 ETH`、`100 BERC20`、个人银行存款 `0`。
 - `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`：`99999900 BERC20`、个人银行存款 `0`。
@@ -101,14 +104,14 @@ anvil --host 127.0.0.1 --port 18545 \
   --state-interval 1 --preserve-historical-states --silent
 ```
 
-终端 B：恢复索引服务，继续使用本次数据库与扫描进度。旧银行仅启用只读索引，因此本命令明确移除 BANK_ADDRESS，避免把旧合约当作新的幂等银行。
+终端 B：恢复索引及操作服务，继续使用本次数据库与扫描进度。当前配置的 `BANK_ADDRESS` 指向新版银行，`PUBLIC_ORIGIN=http://127.0.0.1:3180`，因此同时启用 SIWE 登录与操作记录；不要再移除 `BANK_ADDRESS`，也不要填入旧银行地址。
 
 ```bash
 cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/tokenbank-fullstack-13
 set -a
 source ../output-tdd/tokenbank-local-recovery/session.env
 set +a
-env -u DATABASE_URL -u PGOPTIONS -u BANK_ADDRESS node backend/src/main.ts
+env -u DATABASE_URL -u PGOPTIONS node backend/src/main.ts
 ```
 
 终端 C：启动前端。当前前端使用本轮配置完成了生产构建，可以直接启动；修改过源码或 `NEXT_PUBLIC_` 配置时，先停止前端，再构建。
@@ -124,6 +127,8 @@ pnpm --dir frontend start --port 3180
 构建命令为 `pnpm --dir frontend build`。不要在运行中的前端旁同时构建。保留状态文件、配置文件和 PostgreSQL 数据库；只有数据库或只有合约地址，都不能替代链状态文件。
 
 2026-09-20 恢复验证时，曾停止并重新启动 Anvil，核对钱包余额、个人存款、银行总资产、区块哈希、充值回执、Transfer 日志和两个 API 入口，结果保持一致。2026-09-21 项目迁移保留了这个 Anvil 实例，只切换前后端程序，迁移前后三项余额和 API 历史记录一致。
+
+2026-09-21 启用交互时，在区块 `11` 新增 `IdempotentTokenBank`，部署交易为 `0x25c415ca67ca50346c31ec80b2948dd28630a5410078a8ee37bc6c1670b90a7d`。本机的 `session.env`、`backend/.env` 和 `frontend/.env.local` 已同步新版地址；原有配置备份与部署回执保存在 `../output-tdd/tokenbank-local-interactive/`，均不纳入 Git。后端启动会核对银行的 Token 和幂等接口，前端则需要重新构建才能更新公开配置。Forge 的 4 项测试与使用独立 Anvil、隔离 PostgreSQL schema 的完整存取款集成测试通过；测试没有使用浏览器钱包签名，也没有动上述钱包或旧银行的资金。
 
 ## 1. 先确认环境与端口
 
@@ -401,7 +406,7 @@ valueRaw：10000000000000000001
 
 ### 7.2 取出 4
 
-保持连接刚才存款的同一个钱包，点击“新的一笔”，再选择“取出”，输入 `4`，点击“取出 Token”并在钱包确认。取款不需要再授权，也不需要填写接收地址；银行会自动退给发起取款的当前钱包。若当前是另一个没有存款的账户，切回原账户即可，银行合约地址不需要改。
+存款确认成功后，页面显示成功提示并自动清空金额、解锁表单。保持连接刚才存款的同一个钱包，直接选择“取出”，输入 `4`，点击“取出 Token”并在钱包确认。取款不需要再授权，也不需要填写接收地址；银行会自动退给发起取款的当前钱包。若当前是另一个没有存款的账户，切回原账户即可，银行合约地址不需要改。
 
 ```text
 钱包余额：93.999999999999999999 BERC20

@@ -6,6 +6,7 @@ import { targetChain } from "@/domains/wallet/config"
 import { WalletButton } from "@/domains/wallet/wallet-button"
 import { BankWorkspace } from "./bank-workspace"
 
+/** app/page.tsx 的客户端入口：维护银行地址和页面布局，操作流程交给 BankWorkspace。 */
 export function BankClient() {
   const connection = useConnection()
   const [bankAddress, setBankAddress] = useState(process.env.NEXT_PUBLIC_BANK_ADDRESS ?? "")
