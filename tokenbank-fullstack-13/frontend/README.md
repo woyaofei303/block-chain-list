@@ -106,7 +106,12 @@ flowchart LR
 ## 目录与请求流程
 
 ```text
-features/bank-dashboard.tsx         页面、金额输入、交易状态与银行设置
+features/bank-dashboard.tsx         页面布局、导航与账户工作区切换
+features/bank-workspace.tsx         余额查询、交易提交、终止与恢复状态
+domains/bank/amount-fields.tsx      金额输入、全部金额与到账预览
+domains/bank/bank-balances.tsx      三种余额与合约链接
+domains/bank/bank-settings-dialog.tsx  银行设置弹窗、草稿与地址校验
+domains/operations/operation-notice.tsx  已保存操作的核实、继续与新建入口
 domains/wallet/wallet-button.tsx       钱包选择、连接与断开
 domains/transfers/transfer-history.tsx    转账记录、分页与定时刷新
 app/providers.tsx          Wagmi 与 React Query
@@ -117,6 +122,8 @@ domains/transfers/client.ts   索引结果校验
 domains/wallet/config.ts                钱包网络与区块浏览器配置
 tests/                     Node 原生测试及本地链集成检查
 ```
+
+阅读页面时先看 `bank-dashboard.tsx` 的组合，再看 `bank-workspace.tsx` 的请求与交易流程，最后按需进入领域组件。金额和交易状态由工作区统一管理，展示组件通过明确的属性和回调交互；设置弹窗只管理自己的草稿。账户、网络、钱包连接或银行地址变化时，仍由工作区的 `key` 重建状态。
 
 ```text
 页面 → Wagmi 连接浏览器钱包 → Viem 读取 Token / TokenBank

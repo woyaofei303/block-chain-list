@@ -7,7 +7,7 @@
 1. `frontend/shared/request.ts`：只返回校验后的数据或抛出错误；统一 fetch、HTTP 状态、响应读取、10 秒超时和 AbortSignal。
 2. `frontend/domains/transfers/client.ts`、`queries.ts`：领域响应校验和 queryOptions；键包含网络、Token、账户、精度、分页。银行余额仍由 Viem 读取链上合约。
 3. `frontend/shared/query-client.ts` → `error-queue.ts` → `error-toaster.tsx`：缓存层收集最终失败，队列合并、排序、抑制，Sonner 显示一条。组件保留行内错误，不重复弹提示。
-4. `frontend/domains/operations/client.ts`：保存业务意图、SIWE 登录、创建/恢复操作、登记哈希、核实结果；`features/bank-dashboard.tsx` 使用 useMutation 编排界面和同步提交锁。
+4. `frontend/domains/operations/client.ts`：保存业务意图、SIWE 登录、创建/恢复操作、登记哈希、核实结果；`frontend/features/bank-workspace.tsx` 使用 useMutation 编排界面和同步提交锁，`bank-dashboard.tsx` 负责页面布局与工作区切换。
 5. `backend/src/operations/router.ts` → `repository.ts` / `chain.ts`：HTTP 输入校验和身份验证、数据库事务、规范链证据核对。
 6. `contracts/src/IdempotentTokenBank.sol`：同账户、同操作编号最多一次资金效果。保留 `TokenBank.sol` 及历史部署，不能原地升级旧银行。
 

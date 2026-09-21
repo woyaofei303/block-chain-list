@@ -29,7 +29,9 @@ backend/
   src/transfers/types.ts   扫描、查询与响应的共享领域类型
 frontend/
   app/                     页面、Provider、同源 /api/transfers 入口
-  features/bank-dashboard.tsx  组合银行、钱包和转账领域
+  features/bank-dashboard.tsx  页面布局、导航与账户工作区切换
+  features/bank-workspace.tsx  余额查询、交易提交与终止恢复，组合领域组件
+  domains/bank/*.tsx        金额输入、资产展示与银行设置弹窗
   domains/bank/client.ts    精确金额、会话校验、合约读写
   domains/wallet/           钱包发现、连接、账户/网络与链配置
   domains/transfers/        记录响应校验、展示与分页
