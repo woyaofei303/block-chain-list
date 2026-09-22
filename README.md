@@ -2,7 +2,7 @@
 
 区块链学习与全栈实践仓库，记录从 PoW、数字签名、Solidity 合约到事件索引和钱包页面的练习。每个项目保留自己的源码、说明、运行方式和验证入口，方便按顺序复习。
 
-**复习按目录尾部编号 `01 → 13` 进行。** GitHub 按目录名称排列，不代表学习顺序；可以直接使用下面的索引。
+**复习按目录尾部编号 `01 → 15` 进行。** GitHub 按目录名称排列，不代表学习顺序；可以直接使用下面的索引。
 
 ## 项目与复习顺序
 
@@ -21,6 +21,8 @@
 | 11 | [erc721-nft-11](erc721-nft-11/README.md) | ERC721 NFT、图片、IPFS 元数据与部署记录 |
 | 12 | [erc20-event-indexer-12](erc20-event-indexer-12/README.md) | Express、Viem、PostgreSQL 转账索引与重组恢复 |
 | 13 | [tokenbank-fullstack-13](tokenbank-fullstack-13/README.md) | 独立 TokenBank 全栈：合约、数据库、API、钱包、请求管理与幂等操作 |
+| 14 | [cli-wallet-14](cli-wallet-14/README.md) | 命令行钱包：加密私钥、余额、ERC20 EIP-1559 构建、签名与 Sepolia 广播 |
+| 15 | [multisig-wallet-15](multisig-wallet-15/README.md) | 多签合约钱包：固定持有人与门槛、链上提案确认、任何人执行与失败重试 |
 
 `tokenbankv2-08` 沿用历史目录名，目前用于 NFTMarket；TokenBank 的前后端已经独立到 `tokenbank-fullstack-13`。
 

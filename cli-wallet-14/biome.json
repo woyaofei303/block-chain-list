@@ -1,0 +1,7 @@
+{
+  "files": { "includes": ["**", "!!**/.wallet"] },
+  "formatter": { "indentStyle": "space", "indentWidth": 2 },
+  "javascript": {
+    "formatter": { "semicolons": "asNeeded", "quoteStyle": "single" }
+  }
+}

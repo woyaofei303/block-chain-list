@@ -17,3 +17,7 @@ if git diff --cached --name-only -- tokenbank-fullstack-13/contracts/ | grep -q 
   forge fmt --root tokenbank-fullstack-13/contracts --check
   forge test --root tokenbank-fullstack-13/contracts
 fi
+
+if git diff --cached --name-only -- cli-wallet-14/ | grep -q .; then
+  npm --prefix cli-wallet-14 run precommit
+fi

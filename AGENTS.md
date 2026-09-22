@@ -19,7 +19,7 @@
 
 - 每个新增的独立学习项目放在仓库根目录，名称使用小写英文、数字和连字符，并在**尾部**附加序号：`<project-name>-<NN>`，例如 `staking-14`。
 - 编号在整个仓库内唯一，按新建顺序递增。创建前同时检查实际一级项目目录与下方项目索引，取已有最大编号再加 1；不能用目录数量加 1，也不能每个主题重新从 `01` 开始。
-- 序号至少两位：`01` 至 `99`，之后继续 `100`。当前最大编号是 `13`，下一个应为 `14`；这是当前状态，未来必须重新计算，不能一直使用 `14`。
+- 序号至少两位：`01` 至 `99`，之后继续 `100`。当前最大编号是 `15`，下一个应为 `16`；这是当前状态，未来必须重新计算，不能一直使用 `16`。
 - 已有项目保持编号。删除或归档项目时保留占号记录，不回收编号、不填补空号、不重新按文件时间排序。修改内容或新增前端不会使旧项目变成新项目。
 - `frontend/`、`backend/`、`src/`、`contracts/`、`test/` 等项目内部目录不单独编号；`.git/`、`.github/`、`.idea/`、`.superpowers/`、`docs-tdd/`、`output-tdd/` 等配置或辅助目录也不编号。
 - 真正创建目录前再次检查编号和目标路径是否被占用；发现重复就重新计算，不覆盖或合并已有目录。默认不新建嵌套 Git 仓库。
@@ -43,6 +43,8 @@
 11. `erc721-nft-11`：Blocklight Genesis ERC721、图片和 IPFS 元数据。读 [README](erc721-nft-11/README.md)。按“图片上传 → 更新 metadata → 验证 → metadata 上传”的顺序处理；已有 Base 主网记录不代表获准再次部署或铸造。
 12. `erc20-event-indexer-12`：Express、Viem、PostgreSQL 转账索引。读 [README](erc20-event-indexer-12/README.md)。使用 npm；数据与扫描进度同事务提交，日志幂等入库，维护检查点和重组恢复。链上整数与 API 金额不能转成不精确的 Number；数据库集成测试使用独立临时 schema。
 13. `tokenbank-fullstack-13`：独立 Token Bank 全栈闭环。先读 [项目规则](tokenbank-fullstack-13/AGENTS.md)、[README](tokenbank-fullstack-13/README.md) 和 [WALKTHROUGH](tokenbank-fullstack-13/WALKTHROUGH.md)。`contracts/` 管理银行与代币合约，`database/` 管理 PostgreSQL 表结构，`backend/` 使用 TypeScript 管理转账索引与查询，`frontend/` 按银行、钱包、转账领域组织；运行时不依赖其他练习源码。
+14. `cli-wallet-14`：TypeScript / Ethers 命令行钱包。读 [项目规则](cli-wallet-14/AGENTS.md) 与 [README](cli-wallet-14/README.md)。生成加密 keystore、查询余额、构建和签名 ERC20 EIP-1559 交易，显式确认后广播到 Sepolia；默认仅模拟，不输出私钥。
+15. `multisig-wallet-15`：Solidity / Foundry 简单多签钱包。读 [项目规则](multisig-wallet-15/AGENTS.md) 与 [README](multisig-wallet-15/README.md)。部署时固定持有人和门槛，通过交易提交与确认提案，达到门槛后任何人可执行；测试仅使用本地 EVM。
 
 ## 4. 新建项目的最小交付
 
