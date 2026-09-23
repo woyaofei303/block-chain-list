@@ -14,7 +14,7 @@ contract PermitTokenBankTest is Test {
     function setUp() public {
         (user, userKey) = makeAddrAndKey("depositor");
         token = new JulianToken();
-        bank = new TokenBank(address(token));
+        bank = new TokenBank(address(token), address(0));
         token.transfer(user, 1_000 ether);
     }
 

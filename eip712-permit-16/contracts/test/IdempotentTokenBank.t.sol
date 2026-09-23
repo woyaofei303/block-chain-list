@@ -7,7 +7,7 @@ import {IdempotentTokenBank} from "../src/IdempotentTokenBank.sol";
 contract IdempotentTokenBankTest {
     function testReplayConflictAndRollback() public {
         BaseERC20 token = new BaseERC20();
-        IdempotentTokenBank bank = new IdempotentTokenBank(address(token));
+        IdempotentTokenBank bank = new IdempotentTokenBank(address(token), address(0));
         bytes32 depositId = keccak256("deposit");
         token.approve(address(bank), 10 ether);
         bank.deposit(10 ether, depositId);
@@ -60,7 +60,7 @@ contract CallbackToken {
 contract IdempotentTokenBankSafetyTest {
     function testReentrancyAndFailedWithdrawalRollback() public {
         CallbackToken token = new CallbackToken();
-        IdempotentTokenBank bank = new IdempotentTokenBank(address(token));
+        IdempotentTokenBank bank = new IdempotentTokenBank(address(token), address(0));
         token.configure(bank);
         bank.deposit(10, keccak256("deposit"));
         require(token.blocked(), "reentrancy accepted");

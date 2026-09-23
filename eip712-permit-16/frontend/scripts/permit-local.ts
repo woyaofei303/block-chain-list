@@ -39,7 +39,8 @@ export async function deployPractice(url: string) {
   assert.ok(seller && buyer, "需要两个 Anvil 解锁模拟账户")
   const root = resolve(import.meta.dirname, "../../contracts")
   const bytecode = (name: string) => {
-    const code = execFileSync("forge", ["inspect", name, "bytecode", "--root", root], {
+    const project = name === "Permit2" ? resolve(root, "lib/permit2") : root
+    const code = execFileSync("forge", ["inspect", name, "bytecode", "--root", project], {
       encoding: "utf8",
     }).trim()
     assert.ok(isHex(code), "Forge 必须返回合约字节码")
@@ -58,11 +59,14 @@ export async function deployPractice(url: string) {
   const token = await deployed(
     await wallet.deployContract({ account: seller, abi: [], bytecode: bytecode("JulianToken") })
   )
+  const permit2 = await deployed(
+    await wallet.deployContract({ account: seller, abi: [], bytecode: bytecode("Permit2") })
+  )
   const bank = await deployed(
     await wallet.deployContract({
       account: seller,
-      abi: parseAbi(["constructor(address)"]),
-      args: [token],
+      abi: parseAbi(["constructor(address,address)"]),
+      args: [token, permit2],
       bytecode: bytecode("IdempotentTokenBank"),
     })
   )
@@ -118,5 +122,5 @@ export async function deployPractice(url: string) {
       args: [0n, parseEther("100")],
     })
   )
-  return { client, wallet, mined, seller, buyer, token, bank, nft, market }
+  return { client, wallet, mined, seller, buyer, token, bank, permit2, nft, market }
 }

@@ -160,7 +160,7 @@ test("成功后释放当前操作的恢复记录，未确认或其他操作的�
   assert.deepEqual(restore(), next)
 })
 
-test("Permit 恢复沿用原编号和授权方式，旧记录兼容，损坏授权方式被拒绝", async () => {
+test("Permit / Permit2 恢复沿用原编号和授权方式，旧记录兼容，损坏授权方式被拒绝", async () => {
   const { restoreIntent, saveIntent, newOperationId } = await import(
     "../domains/operations/client.ts"
   )
@@ -184,7 +184,14 @@ test("Permit 恢复沿用原编号和授权方式，旧记录兼容，损坏授�
   }
   saveIntent(storage, intent)
   assert.deepEqual(restoreIntent(storage, intent.account, 31337, intent.bankAddress), intent)
-  for (const invalid of [{ authorization: "invalid" }, { action: "withdraw" }]) {
+  const permit2 = { ...intent, authorization: "permit2" as const }
+  saveIntent(storage, permit2)
+  assert.deepEqual(restoreIntent(storage, intent.account, 31337, intent.bankAddress), permit2)
+  for (const invalid of [
+    { authorization: "invalid" },
+    { action: "withdraw" },
+    { action: "withdraw", authorization: "permit2" },
+  ]) {
     raw = JSON.stringify({ ...intent, ...invalid })
     assert.throws(() => restoreIntent(storage, intent.account, 31337, intent.bankAddress), /无效/)
   }

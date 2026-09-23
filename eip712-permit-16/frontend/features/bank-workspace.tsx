@@ -6,7 +6,7 @@ import { getConnection } from "wagmi/actions"
 import { AmountFields } from "@/domains/bank/amount-fields"
 import { BankBalances } from "@/domains/bank/bank-balances"
 import { BankSettingsDialog } from "@/domains/bank/bank-settings-dialog"
-import { createBank, parseAmount } from "@/domains/bank/client"
+import { type Authorization, createBank, parseAmount } from "@/domains/bank/client"
 import {
   clearConfirmedIntent,
   executeIntent,
@@ -39,7 +39,7 @@ export function BankWorkspace({
   const queryClient = useQueryClient()
   const [action, setAction] = useState<"deposit" | "withdraw">("deposit")
   const [amount, setAmount] = useState("")
-  const [authorization, setAuthorization] = useState<"permit" | "approve">("permit")
+  const [authorization, setAuthorization] = useState<Authorization>("permit")
   const [intent, setIntent] = useState<Intent>()
   // stopped 控制查询是否可自动启动；mutation.isPending 只表示这次提交是否仍在执行。
   const [stopped, setStopped] = useState(false)
@@ -179,10 +179,14 @@ export function BankWorkspace({
   }
   const deposit = action === "deposit"
   const depositAuthorization =
-    intent?.authorization ?? (snapshot?.permitSupported ? authorization : "approve")
+    intent?.authorization ??
+    ((authorization === "permit" && !snapshot?.permitSupported) ||
+    (authorization === "permit2" && !snapshot?.permit2)
+      ? "approve"
+      : authorization)
 
   let submitLabel = deposit
-    ? depositAuthorization === "permit"
+    ? depositAuthorization !== "approve"
       ? "签名并存入"
       : "存入 Token"
     : "取出 Token"
@@ -307,7 +311,7 @@ export function BankWorkspace({
             <fieldset disabled={busy || !!intent} className="mb-3 px-2">
               <legend className="sr-only">存款授权方式</legend>
               <div className="flex gap-2 rounded-2xl bg-[#f6f5f7] p-1">
-                {(["permit", "approve"] as const).map((mode) => (
+                {(["approve", "permit", "permit2"] as const).map((mode) => (
                   <label key={mode} className="flex-1">
                     <input
                       type="radio"
@@ -315,26 +319,24 @@ export function BankWorkspace({
                       value={mode}
                       className="peer sr-only"
                       checked={depositAuthorization === mode}
-                      disabled={mode === "permit" && !snapshot?.permitSupported}
+                      disabled={
+                        (mode === "permit" && !snapshot?.permitSupported) ||
+                        (mode === "permit2" && !snapshot?.permit2)
+                      }
                       onChange={() => {
                         setAuthorization(mode)
                         setStatus(undefined)
                       }}
                     />
                     <span className="flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[13px] text-muted peer-checked:bg-white peer-checked:font-semibold peer-checked:text-heading peer-checked:shadow-sm peer-focus-visible:outline-2 peer-focus-visible:outline-accent peer-disabled:cursor-not-allowed peer-disabled:opacity-40">
-                      {mode === "permit" ? "签名授权" : "普通授权"}
-                      {mode === "permit" && (
-                        <span className="rounded-md bg-[#fff0fa] px-1.5 py-0.5 text-[10px] text-[#c50c91]">
-                          少一笔交易
-                        </span>
-                      )}
+                      {mode === "approve" ? "普通授权" : mode === "permit" ? "Permit" : "Permit2"}
                     </span>
                   </label>
                 ))}
               </div>
               {snapshot && !snapshot.permitSupported && (
                 <p className="mt-2 px-1 text-[11px] text-muted">
-                  当前银行或 Token 不支持签名授权，可使用普通存款。
+                  当前 Token 或银行不支持 EIP-2612，可选择其他可用方式。
                 </p>
               )}
             </fieldset>
@@ -452,7 +454,9 @@ export function BankWorkspace({
           {deposit
             ? depositAuthorization === "permit"
               ? "先签署本次额度（20 分钟有效），再确认存款交易。"
-              : "授权不足时，仅授权本次金额，再确认存款。"
+              : depositAuthorization === "permit2"
+                ? "先检查 Permit2 额度，不足时授权本次金额；再签名并存入。已有额度时只需一笔交易。"
+                : "授权不足时，仅授权本次金额，再确认存款。"
             : "取出后，Token 将转回当前连接的钱包。"}
         </p>
       </section>

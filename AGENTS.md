@@ -45,7 +45,7 @@
 13. `tokenbank-fullstack-13`：独立 Token Bank 全栈闭环。先读 [项目规则](tokenbank-fullstack-13/AGENTS.md)、[README](tokenbank-fullstack-13/README.md) 和 [WALKTHROUGH](tokenbank-fullstack-13/WALKTHROUGH.md)。`contracts/` 管理银行与代币合约，`database/` 管理 PostgreSQL 表结构，`backend/` 使用 TypeScript 管理转账索引与查询，`frontend/` 按银行、钱包、转账领域组织；运行时不依赖其他练习源码。
 14. `cli-wallet-14`：TypeScript / Ethers 命令行钱包。读 [项目规则](cli-wallet-14/AGENTS.md) 与 [README](cli-wallet-14/README.md)。生成加密 keystore、查询余额、构建和签名 ERC20 EIP-1559 交易，显式确认后广播到 Sepolia；默认仅模拟，不输出私钥。
 15. `multisig-wallet-15`：Solidity / Foundry 简单多签钱包。读 [项目规则](multisig-wallet-15/AGENTS.md) 与 [README](multisig-wallet-15/README.md)。部署时固定持有人和门槛，通过交易提交与确认提案，达到门槛后任何人可执行；测试仅使用本地 EVM。
-16. `eip712-permit-16`：EIP-2612 Token、签名存款与 EIP-712 白名单 NFT 全栈练习。读 [项目规则](eip712-permit-16/AGENTS.md)、[README](eip712-permit-16/README.md) 与 [操作指南](eip712-permit-16/WALKTHROUGH.md)。从 13 复用银行与前后端、从 08/11 复用市场与 NFT，现已统一到本目录 `contracts/`、`frontend/`、`backend/`、`database/`；业务源码不跨项目导入，仅共享 09 的第三方库及仓库钩子。默认仅在本地 EVM / Anvil 验证。
+16. `eip712-permit-16`：EIP-2612 Token、Permit / Permit2 签名存款与 EIP-712 白名单 NFT 全栈练习。读 [项目规则](eip712-permit-16/AGENTS.md)、[README](eip712-permit-16/README.md) 与 [操作指南](eip712-permit-16/WALKTHROUGH.md)。从 13 复用银行与前后端、从 08/11 复用市场与 NFT，现已统一到本目录 `contracts/`、`frontend/`、`backend/`、`database/`；业务源码不跨项目导入，仅共享 09 的第三方库及仓库钩子。新增 Permit2 的独立编译、部署与命令见 [Permit2 指南](eip712-permit-16/PERMIT2.md)。默认仅在本地 EVM / Anvil 验证。
 
 ## 4. 新建项目的最小交付
 

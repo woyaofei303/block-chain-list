@@ -1,4 +1,5 @@
 [profile.default]
+fs_permissions = [{ access = "read", path = "./lib/permit2/out" }]
 src = "src"
 test = "test"
 out = "out"

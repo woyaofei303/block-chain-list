@@ -31,6 +31,7 @@ if git diff --cached --name-only -- eip712-permit-16/backend/ eip712-permit-16/d
 fi
 
 if git diff --cached --name-only -- eip712-permit-16/contracts/ | grep -q .; then
+  forge build --root eip712-permit-16/contracts/lib/permit2 --skip test --skip script
   forge fmt --root eip712-permit-16/contracts --check
   forge test --root eip712-permit-16/contracts
 fi

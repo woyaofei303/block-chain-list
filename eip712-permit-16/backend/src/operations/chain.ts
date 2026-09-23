@@ -12,6 +12,7 @@ export const operationAbi = parseAbi([
   'function deposit(uint256 amount, bytes32 operationId)',
   'function withdraw(uint256 amount, bytes32 operationId)',
   'event OperationExecuted(address indexed user, bytes32 indexed operationId, bool deposit, uint256 amount)',
+  'function depositWithPermit2(uint256 amount,bytes32 operationId,uint256 deadline,bytes signature)',
   'function permitDeposit(uint256 amount,bytes32 operationId,uint256 deadline,uint8 v,bytes32 r,bytes32 s)',
 ])
 
@@ -95,7 +96,8 @@ export async function inspectOperation(
         data: transaction.input,
       })
       if (
-        (call.functionName === 'permitDeposit'
+        (call.functionName === 'permitDeposit' ||
+        call.functionName === 'depositWithPermit2'
           ? 'deposit'
           : call.functionName) !== operation.action ||
         call.args[0] !== BigInt(operation.amountRaw) ||

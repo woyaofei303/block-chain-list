@@ -18,6 +18,7 @@ import {
   numberToHex,
   parseAbi,
   parseEther,
+  zeroAddress,
   zeroHash,
 } from 'viem'
 import { foundry } from 'viem/chains'
@@ -37,9 +38,11 @@ import { scanOnce } from '../src/transfers/indexer.ts'
 import { initDatabase } from '../src/transfers/repository.ts'
 import type { TransferResponse } from '../src/transfers/types.ts'
 
-const usePermit = process.env.TEST_PERMIT === '1'
+const usePermit2 = process.env.TEST_PERMIT2 === '1'
+const usePermit = process.env.TEST_PERMIT === '1' && !usePermit2
+const authorization = usePermit2 ? 'permit2' : usePermit ? 'permit' : 'approve'
 
-test(`${usePermit ? 'Permit' : 'Approve'}：本项目合约 → 存取款 → PostgreSQL → Express → 前端代理与记录形成闭环`, {
+test(`${authorization}：本项目合约 → 存取款 → PostgreSQL → Express → 前端代理与记录形成闭环`, {
   timeout: 60_000,
 }, async (t) => {
   const reservation = createServer().listen(0, '127.0.0.1')
@@ -111,7 +114,13 @@ test(`${usePermit ? 'Permit' : 'Approve'}：本项目合约 → 存取款 → Po
   const bytecode = (name: string): Hex =>
     execFileSync(
       'forge',
-      ['inspect', `src/${name}.sol:${name}`, 'bytecode', '--root', contracts],
+      [
+        'inspect',
+        `src/${name}.sol:${name}`,
+        'bytecode',
+        '--root',
+        name === 'Permit2' ? `${contracts}/lib/permit2` : contracts,
+      ],
       { encoding: 'utf8' },
     ).trim() as Hex
   const tokenReceipt = await rpc.waitForTransactionReceipt({
@@ -123,11 +132,23 @@ test(`${usePermit ? 'Permit' : 'Approve'}：本项目合约 → 存取款 → Po
   })
   const token = tokenReceipt.contractAddress
   assert.ok(token)
+  const permit2Receipt = usePermit2
+    ? await rpc.waitForTransactionReceipt({
+        hash: await wallet.deployContract({
+          account: deployer,
+          abi: [],
+          bytecode: bytecode('Permit2'),
+        }),
+      })
+    : undefined
+  if (usePermit2) assert.ok(permit2Receipt?.contractAddress)
   const bankReceipt = await rpc.waitForTransactionReceipt({
     hash: await wallet.deployContract({
       account: deployer,
-      abi: parseAbi(['constructor(address tokenAddress)']),
-      args: [token],
+      abi: parseAbi([
+        'constructor(address tokenAddress,address permit2Address)',
+      ]),
+      args: [token, permit2Receipt?.contractAddress ?? zeroAddress],
       bytecode: bytecode('IdempotentTokenBank'),
     }),
   })
@@ -166,7 +187,7 @@ test(`${usePermit ? 'Permit' : 'Approve'}：本项目合约 → 存取款 → Po
     ) =>
       bankClient.transact(action, amount, progress, {
         id: numberToHex(++operationSequence, { size: 32 }),
-        authorization: usePermit ? 'permit' : 'approve',
+        authorization,
         onBroadcast: () => {},
       }),
   }
@@ -340,7 +361,7 @@ test(`${usePermit ? 'Permit' : 'Approve'}：本项目合约 → 存取款 → Po
   const beforeIdempotent = await bank.read()
   const transactionHash = await bankClient.transact('deposit', '1', () => {}, {
     id: operationId,
-    authorization: usePermit ? 'permit' : 'approve',
+    authorization,
     onBroadcast: () => {},
   })
   assert.ok(transactionHash)
@@ -424,7 +445,7 @@ test(`${usePermit ? 'Permit' : 'Approve'}：本项目合约 → 存取款 → Po
     ).rows[0].verified_status,
     'pending',
   )
-  if (usePermit) {
+  if (usePermit || usePermit2) {
     const expiredId = numberToHex(700, { size: 32 })
     assert.equal(
       (await call('/operations', { ...input, amountRaw: '1' }, expiredId))
@@ -435,8 +456,15 @@ test(`${usePermit ? 'Permit' : 'Approve'}：本项目合约 → 存取款 → Po
       account,
       address,
       abi: operationAbi,
-      functionName: 'permitDeposit',
-      args: [1n, expiredId, 0n, 27, zeroHash, zeroHash],
+      ...(usePermit2
+        ? ({
+            functionName: 'depositWithPermit2',
+            args: [1n, expiredId, 0n, '0x'],
+          } as const)
+        : ({
+            functionName: 'permitDeposit',
+            args: [1n, expiredId, 0n, 27, zeroHash, zeroHash],
+          } as const)),
       gas: 200_000n,
     })
     assert.equal(
@@ -451,7 +479,7 @@ test(`${usePermit ? 'Permit' : 'Approve'}：本项目合约 → 存取款 → Po
       'failed',
     )
     console.log(
-      'Permit：索引、数据库、同源代理、认证、幂等恢复及过期签名回滚核实通过',
+      `${authorization}：索引、数据库、同源代理、认证、幂等恢复及过期签名回滚核实通过`,
     )
   }
   const foreign = await fetch(`${base}/operations`, {
@@ -508,7 +536,7 @@ test(`${usePermit ? 'Permit' : 'Approve'}：本项目合约 → 存取款 → Po
     chainId: 31337,
     bankAddress: address.toLowerCase() as Hex,
     action: 'deposit',
-    authorization: usePermit ? 'permit' : 'approve',
+    authorization,
     amount,
     amountRaw: parseEther(amount).toString(),
     phase: 'prepared',

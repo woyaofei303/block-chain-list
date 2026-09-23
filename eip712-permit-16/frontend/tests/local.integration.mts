@@ -68,8 +68,8 @@ test("本地链完成授权、存款、取款，并在拒签及账户切换时�
   assert.ok(tokenReceipt.contractAddress)
   const bankTx = await wallet.deployContract({
     account,
-    abi: parseAbi(["constructor(address tokenAddress)"]),
-    args: [tokenReceipt.contractAddress],
+    abi: parseAbi(["constructor(address tokenAddress,address permit2Address)"]),
+    args: [tokenReceipt.contractAddress, "0x0000000000000000000000000000000000000000"],
     bytecode: bytecode("src/IdempotentTokenBank.sol:IdempotentTokenBank"),
   })
   const bankReceipt = await rpc.waitForTransactionReceipt({ hash: bankTx })

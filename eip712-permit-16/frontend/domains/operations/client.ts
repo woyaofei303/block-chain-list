@@ -11,7 +11,7 @@ import {
 import { createSiweMessage } from "viem/siwe"
 import { AppError, asAppError } from "../../shared/errors.ts"
 import { request } from "../../shared/request.ts"
-import { createBank } from "../bank/client.ts"
+import { type Authorization, createBank } from "../bank/client.ts"
 
 /** 一次业务意图的恢复记录；phase 是本地进度，重新进入页面后仍须向后端核实链上结果。 */
 export type Intent = {
@@ -20,7 +20,7 @@ export type Intent = {
   chainId: number
   bankAddress: Address
   action: "deposit" | "withdraw"
-  authorization?: "approve" | "permit"
+  authorization?: Authorization
   amount: string
   amountRaw: string
   phase: "prepared" | "approval" | "business" | "unknown" | "confirmed"
@@ -56,8 +56,11 @@ export function restoreIntent(
     (data.action !== "deposit" && data.action !== "withdraw") ||
     (data.authorization !== undefined &&
       data.authorization !== "approve" &&
-      data.authorization !== "permit") ||
-    (data.action === "withdraw" && data.authorization === "permit") ||
+      data.authorization !== "permit" &&
+      data.authorization !== "permit2") ||
+    (data.action === "withdraw" &&
+      data.authorization !== undefined &&
+      data.authorization !== "approve") ||
     typeof data.amount !== "string" ||
     !/^\d+(\.\d+)?$/.test(data.amount) ||
     typeof data.amountRaw !== "string" ||

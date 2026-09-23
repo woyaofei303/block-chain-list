@@ -1,12 +1,14 @@
-# EIP-712 全栈：Permit 存款与白名单 NFT
+# EIP-712 全栈：Permit / Permit2 存款与白名单 NFT
+
+Permit2 练习见 [PERMIT2.md](PERMIT2.md)：原理、首次授权与交易次数、部署、前端操作、CLI 签名及验证日志。
 
 这是本练习的统一入口。现有实现已集中到本目录，安装、编译、运行、测试和复习均从这里开始。先读 [AGENTS.md](AGENTS.md)，按 [WALKTHROUGH.md](WALKTHROUGH.md) 执行完整命令行流程；请求、登录、幂等与恢复细节见 [REQUESTS.md](REQUESTS.md)。
 
 ## 目标与已实现范围
 
 - `JulianToken`：OpenZeppelin EIP-2612 ERC20Permit，名称 `Julian Token`，符号 `JUL`，18 位精度，部署者一次获得 1,000,000 JUL。
-- `IdempotentTokenBank`：普通存款、Permit 存款、提款和操作编号去重，三个入口均防重入；直接转币到银行不会增加个人可提余额。
-- 原 TokenBank 全栈页面：保留钱包连接、精确金额、三种余额、历史索引、SIWE 登录、终止与恢复，增加“签名授权 / 普通授权”。UI 延用 Tailwind，参考 Uniswap 的中央卡片、分层输入区和粉色主按钮。
+- `IdempotentTokenBank`：普通存款、Permit / Permit2 存款、提款和操作编号去重，四个入口均防重入；直接转币到银行不会增加个人可提余额。
+- 原 TokenBank 全栈页面：保留钱包连接、精确金额、三种余额、历史索引、SIWE 登录、终止与恢复，支持“普通授权 / Permit / Permit2”。UI 延用 Tailwind，参考 Uniswap 的中央卡片、分层输入区和粉色主按钮。
 - `BlocklightGenesis`：复用已有 `Blocklight Genesis / BLGT` ERC721，owner 铸造，tokenId 从 0 开始。
 - `PermitNFTMarket`：项目方签署 EIP-712 白名单，指定买家凭签名购买指定订单；继承的普通购买和回调购买入口均禁用。NFT 铸造、上架和购买提供命令行演示与自动测试，前端专注银行页面。
 
@@ -21,12 +23,13 @@ eip712-permit-16/
 ├── contracts/
 │   ├── src/
 │   │   ├── JulianToken.sol            本题的 EIP-2612 Token
-│   │   ├── IdempotentTokenBank.sol    从 13 复用，增加 Permit
+│   │   ├── IdempotentTokenBank.sol    从 13 复用，增加 Permit / Permit2
 │   │   ├── NFTMarket.sol              从 08 复用上架与结算
 │   │   ├── PermitNFTMarket.sol        本题的白名单市场扩展
 │   │   ├── BlocklightGenesis.sol      从 11 复用 NFT
 │   │   ├── BaseERC20.sol              从 13 保留普通授权回归用 Token
 │   │   └── TokenBank.sol              从 13 保留旧银行兼容测试
+│   ├── lib/permit2/                  固定官方源码和必要 Solmate 依赖
 │   ├── test/                         普通银行、幂等与签名测试
 │   └── foundry.toml
 ├── frontend/                         从 13 复用 Next.js / Wagmi 页面
@@ -43,10 +46,11 @@ eip712-permit-16/
 ├── database/                         从 13 复用 schema.sql / verify.sql
 ├── README.md                         范围、架构、阅读与验证入口
 ├── WALKTHROUGH.md                    从零运行、CLI 交易、查询与恢复
+├── PERMIT2.md                        Permit2 部署、签名存款与验证
 └── REQUESTS.md                       请求、认证、幂等与失败边界
 ```
 
-只有两类仓库级依赖仍共享：`foundry-counter-09/lib` 中已有 OpenZeppelin / forge-std，以及 `multi-chat-py-01/web/.husky` 提交钩子。因此应在完整仓库内使用，不把本目录单独拷出后当作已包含依赖的发行包。未新增依赖或升级版本；前端 pnpm、后端 npm，各自保留原锁文件。
+只有两类仓库级依赖仍共享：`foundry-counter-09/lib` 中已有 OpenZeppelin / forge-std，以及 `multi-chat-py-01/web/.husky` 提交钩子。因此应在完整仓库内使用，不把本目录单独拷出后当作已包含依赖的发行包。本轮仅增加固定版本的官方 Permit2 / Solmate 合约源码；无新增 npm 依赖。前端 pnpm、后端 npm，各自保留原锁文件。
 
 ## 整体调用关系
 
@@ -55,6 +59,8 @@ flowchart LR
   UI[Next.js 银行页面] --> Wallet[用户钱包]
   Wallet -->|Permit 签名与交易| Bank[IdempotentTokenBank]
   Bank -->|permit / transferFrom| Token[JulianToken]
+  Bank -->|permitTransferFrom| Permit2[官方 Permit2]
+  Permit2 -->|transferFrom| Token
   UI --> Proxy[Next.js 同源代理]
   Proxy --> API[Express 登录与操作接口]
   API -->|核实 operationId 和回执| Bank
@@ -69,11 +75,12 @@ flowchart LR
 
 钱包余额、个人存款与银行总资产以合约为准。数据库保存事件、会话及操作状态，不决定谁可提款。链上交易成功、后端核实成功、索引完成和页面刷新是不同阶段。
 
-### 三种签名不要混淆
+### 四种签名不要混淆
 
 1. **SIWE 登录**：用户证明账户身份，让后端登记/核实操作；不授权 Token，不扣款。首次登录或会话过期时需要。
 2. **Token Permit**：Token 持有人授权银行使用本次金额，域为 `Julian Token / 1 / chainId / Token 地址`。钱包签名免费，随后 `permitDeposit` 仍是一笔需要 Gas 的链上交易。
-3. **NFT 白名单**：项目方批准指定买家购买订单，域为 `Julian NFT Market / 1 / chainId / Market 地址`。它不等于 Token 付款授权，买家仍需给市场足够 allowance。
+3. **Permit2**：持有人签署一次性转账授权，域为 `Permit2 / chainId / Permit2 地址`，没有 version。需要 Token 提前授予 Permit2 足够额度；有额度后签名存款一笔交易。nonce 使用 operationId。
+4. **NFT 白名单**：项目方批准指定买家购买订单，域为 `Julian NFT Market / 1 / chainId / Market 地址`。它不等于 Token 付款授权，买家仍需给市场足够 allowance。
 
 ```solidity
 Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)
@@ -102,12 +109,15 @@ Whitelist(address buyer,address seller,uint256 tokenId,uint256 price,uint256 non
 cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
 pnpm --dir frontend install --frozen-lockfile
 npm --prefix backend ci
+forge build --root contracts/lib/permit2
 forge test --root contracts -vvv
+pnpm --dir frontend test:permit2
+TEST_PERMIT2=1 npm --prefix backend run test:integration
 pnpm --dir frontend test:permit
 TEST_PERMIT=1 npm --prefix backend run test:integration
 ```
 
-最后一项需要 PostgreSQL，使用随机 schema 和独立 Anvil，结束自动清理。前两项交易测试无需人工钱包签名或公共 RPC。全套质量检查、资产转移日志生成和浏览器运行命令见 [操作指南](WALKTHROUGH.md)。
+后端集成需要 PostgreSQL，使用随机 schema 和独立 Anvil，结束自动清理。全部交易测试无需人工钱包签名或公共 RPC。全套质量检查、资产转移日志生成和浏览器运行命令见 [操作指南](WALKTHROUGH.md)。
 
 ## 限制
 
@@ -118,7 +128,11 @@ TEST_PERMIT=1 npm --prefix backend run test:integration
 - 测试 NFT URI 是占位值；本次不上传 IPFS。历史 11 题的媒体与部署证据仍留在原目录。
 - 终止请求只停止等待和后续步骤，不能撤回已广播交易；恢复必须先核实原 operationId / 哈希。
 
-## 最新 Review 与实测（2026-09-23）
+## Permit2 扩展实测（2026-09-23）
+
+原有银行、页面和业务流程已扩展 Permit2，测试与日志见 [Permit2 操作指南](PERMIT2.md#本次实测记录)。旧部署仍保留原功能，启用 Permit2 必须部署新的银行及官方 Permit2。
+
+## 历史 EIP-2612 Review 与实测（2026-09-23，Permit2 扩展前）
 
 题目要求的两点均已实现，并在本轮重新执行：
 

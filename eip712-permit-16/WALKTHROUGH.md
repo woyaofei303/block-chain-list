@@ -1,5 +1,7 @@
 # 从零运行与整体操作流程
 
+新增 Permit2 功能见 [PERMIT2.md](PERMIT2.md)，新部署脚本会同时部署官方 Permit2。旧环境不自动升级；需要保留旧环境时按新指南使用独立端口。
+
 本指南只在本地 Anvil 演示，沿用已有实现，所有业务入口位于 `eip712-permit-16`。先看 [项目总览](README.md) 理解签名区别，再按下面顺序操作。每个新终端先进入同一项目目录；命令默认 Bash / Zsh。
 
 ```bash
@@ -36,6 +38,7 @@ jq --version
 pg_isready -h 127.0.0.1 -p 5432
 pnpm --dir frontend install --frozen-lockfile
 npm --prefix backend ci
+forge build --root contracts/lib/permit2
 forge build --root contracts
 ```
 
@@ -95,7 +98,7 @@ fi
 jq . "$PRACTICE_RUN/deployment.json"
 ```
 
-脚本按顺序部署 JUL、幂等银行、Blocklight Genesis、白名单市场；seller 同时是部署者、NFT owner 和项目签名方，buyer 获得 1000 JUL；seller 铸造 NFT #0 并以 100 JUL 上架。没有向公共链广播。
+脚本按顺序部署 JUL、官方 Permit2、幂等银行、Blocklight Genesis、白名单市场；seller 同时是部署者、NFT owner 和项目签名方，buyer 获得 1000 JUL；seller 铸造 NFT #0 并以 100 JUL 上架。没有向公共链广播。
 
 如果命令中断或 JSON 无法解析，先查本地节点与回执，不能删除文件后盲目重发。确认这只是一次全新的、可放弃的本地演示后，可另选运行目录重新开始。
 
@@ -107,7 +110,7 @@ if [ ! -e "$PRACTICE_RUN/session.env" ]; then
     "# 本机配置；由 shell source 加载，只保存公开地址和运行参数。",
     "# 本轮链状态、部署记录和配置的绝对目录；移动仓库后更新，不能指向另一条链。",
     "PRACTICE_RUN=" + ($run | @sh),
-    "# 本地 Anvil RPC；部署脚本固定使用 8547，钱包也必须连接同一实例。",
+    "# 本地 Anvil RPC；部署脚本默认使用 8547，也可传入本地 RPC 参数，钱包也必须连接同一实例。",
     "RPC_URL=" + .rpc,
     "# 本练习固定的本地链 ID；相同 chain ID 不代表相同链状态。",
     "CHAIN_ID=" + (.chainId | tostring),
@@ -115,6 +118,8 @@ if [ ! -e "$PRACTICE_RUN/session.env" ]; then
     "TOKEN_ADDRESS=" + .token,
     "# 幂等 TokenBank 合约；存款、提款及个人可提余额查询使用。",
     "BANK_ADDRESS=" + .bank,
+    "# 本轮官方 Permit2 地址；旧部署没有此字段，保留空值表示未启用。",
+    "PERMIT2_ADDRESS=" + (.permit2 // ""),
     "# Blocklight Genesis ERC721 合约；查询 NFT owner 使用。",
     "NFT_ADDRESS=" + .nft,
     "# 白名单 NFT 市场；查询挂单、付款授权和 permitBuy 使用。",
@@ -244,7 +249,7 @@ cast send "$TOKEN_ADDRESS" 'transfer(address,uint256)' "${PRACTICE_WALLET:?请�
 页面按以下顺序操作：
 
 1. 连接钱包，核对页头账户、网络和银行地址；余额应为 1000 JUL、个人存款 0、银行资产 0（仅适用于尚未操作的新环境）。
-2. 输入 `10.000000000000000001`，选择“签名授权”，点击“签名并存入”。首次先完成 SIWE，再签 Permit，最后确认存款交易。
+2. 输入 `10.000000000000000001`，选择“Permit”，点击“签名并存入”。首次先完成 SIWE，再签 Permit，最后确认存款交易。
 3. Permit 只授权本次金额，有效期 20 分钟；签名不花 Gas，最终存款交易需要 Gas，无需先发 approve 交易。
 4. 成功后钱包为 `989.999999999999999999`，个人存款为 `10.000000000000000001`。切到“取出”，输入 `4` 并确认，个人存款变为 `6.000000000000000001`，钱包为 `993.999999999999999999`。
 5. 普通授权存款仍可选择；拒签、超额、账户/网络变化时不能误报成功。刷新/终止后先核实原操作，不生成新编号重复扣款。
@@ -347,7 +352,8 @@ pnpm --dir frontend start --port "$FRONTEND_PORT"
 
 常见问题：
 
-- 签名选项不可选：确认连接成功、使用 JUL 与更新后的幂等银行；历史 BaseERC20 没有 Permit。
+- Permit2 不可选：旧银行未配置 Permit2；按新指南部署，不能只改前端地址。
+- Permit 选项不可选：确认连接成功、使用 JUL 与更新后的幂等银行；历史 BaseERC20 没有 Permit。
 - 页面报后端不匹配：核对前后端银行、Token、chain ID 和 RPC 地址；相同 chain ID 不足以证明同一节点。
 - SIWE / 写接口拒绝：确认 C 正常运行、`BANK_ADDRESS` 已配置、浏览器 origin 等于 `PUBLIC_ORIGIN`。后端离线时不能完成页面写操作闭环。
 - API 502：先检查 C，再检查 D 的 `INDEXER_URL`；索引暂未追上时对比 indexedThrough 与交易区块。
@@ -361,6 +367,7 @@ pnpm --dir frontend start --port "$FRONTEND_PORT"
 
 ```bash
 forge fmt --root contracts --check
+forge build --root contracts/lib/permit2
 forge build --root contracts
 forge test --root contracts -vvv
 pnpm --dir frontend lint
@@ -369,6 +376,7 @@ pnpm --dir frontend typecheck
 pnpm --dir frontend test
 pnpm --dir frontend test:integration
 pnpm --dir frontend test:permit
+pnpm --dir frontend test:permit2
 npm --prefix backend run lint
 npm --prefix backend run format:check
 npm --prefix backend run typecheck

@@ -20,7 +20,10 @@ import { createBank } from "../domains/bank/client.ts"
 import { deployPractice, marketAbi, nftAbi } from "../scripts/permit-local.ts"
 import { whitelistTypedData } from "../scripts/whitelist.ts"
 
-test("真实 RPC 签名：前端 Permit 存取款、拒签/切换保护、白名单 NFT 结算", {
+const usePermit2 = process.env.TEST_PERMIT2 === "1"
+const authorization = usePermit2 ? "permit2" : "permit"
+
+test(`真实 RPC 签名：前端 ${authorization} 存取款、拒签/切换保护、白名单 NFT 结算`, {
   timeout: 90_000,
 }, async (t) => {
   const server = createServer().listen(0, "127.0.0.1")
@@ -49,7 +52,7 @@ test("真实 RPC 签名：前端 Permit 存取款、拒签/切换保护、白名
       await setTimeout(50)
     }
   }
-  const { client, wallet, mined, seller, buyer, bank, token, nft, market } =
+  const { client, wallet, mined, seller, buyer, bank, permit2, token, nft, market } =
     await deployPractice(url)
   let selected = buyer
   let reject = false
@@ -85,7 +88,7 @@ test("真实 RPC 签名：前端 Permit 存取款、拒签/切换保护、白名
         (_message, hash) => progress({ hash }),
         {
           id: numberToHex(++sequence, { size: 32 }),
-          authorization: action === "permit" ? "permit" : "approve",
+          authorization: action === "permit" ? authorization : "approve",
           onBroadcast: () => {},
         }
       )
@@ -96,11 +99,14 @@ test("真实 RPC 签名：前端 Permit 存取款、拒签/切换保护、白名
   const after = await transactBank("10.000000000000000001", "permit", (event) => {
     if (event.hash) hashes.push(event.hash)
   })
-  assert.equal(writes, 1, "签名存款只能发送一笔交易，不调用 approve")
+  const initialWrites = usePermit2 ? 2 : 1
+  assert.equal(writes, initialWrites, "Permit2 无额度时先 approve；EIP-2612 无需 approve")
+  const depositHash = hashes.at(-1)
+  assert.ok(depositHash)
   assert.equal(after.deposited, parseEther("10.000000000000000001"))
   assert.equal(after.walletBalance, before.walletBalance - after.deposited)
   assert.equal(after.bankAssets, after.deposited)
-  const depositReceipt = await client.getTransactionReceipt({ hash: hashes[0] })
+  const depositReceipt = await client.getTransactionReceipt({ hash: depositHash })
   const depositTransfers = parseEventLogs({
     abi: tokenAbi,
     eventName: "Transfer",
@@ -110,15 +116,30 @@ test("真实 RPC 签名：前端 Permit 存取款、拒签/切换保护、白名
     depositTransfers.map((log) => log.args),
     [{ from: buyer, to: getAddress(bank), value: after.deposited }]
   )
-  console.log("Permit deposit:", {
+  console.log(`${authorization} deposit:`, {
+    transactions: writes,
+    permit2,
     token,
     from: buyer,
     to: bank,
     before: before.walletBalance.toString(),
     after: after.walletBalance.toString(),
     bank: after.bankAssets.toString(),
-    hash: hashes[0],
+    hash: depositHash,
   })
+  if (usePermit2) {
+    assert.equal(before.permit2?.toLowerCase(), permit2.toLowerCase())
+    // 仅本地测试：预留足够额度，证明后续签名存款只需一笔链上交易。
+    await mined(
+      await wallet.writeContract({
+        account: buyer,
+        address: token,
+        abi: tokenAbi,
+        functionName: "approve",
+        args: [permit2, parseEther("100")],
+      })
+    )
+  }
   reject = true
   await assert.rejects(
     transactBank("1", "permit", () => {}),
@@ -138,25 +159,25 @@ test("真实 RPC 签名：前端 Permit 存取款、拒签/切换保护、白名
     /网络不匹配/
   )
   wrongChain = false
-  assert.equal(writes, 1, "拒签、切换后不得广播")
+  assert.equal(writes, initialWrites, "拒签、切换后不得广播")
   abortAfterSign = new AbortController()
   const cancelledBank = createBank(provider, 31337, bank, buyer, () => true, abortAfterSign.signal)
   await assert.rejects(
     cancelledBank.transact("deposit", "1", () => {}, {
       id: numberToHex(900, { size: 32 }),
-      authorization: "permit",
+      authorization,
       onBroadcast: () => {},
     }),
     { name: "AbortError" }
   )
   abortAfterSign = undefined
-  assert.equal(writes, 1, "签名返回后终止不得发送存款交易")
+  assert.equal(writes, initialWrites, "签名返回后终止不得发送存款交易")
   await session.transact("deposit", "10.000000000000000001", () => {}, {
     id: numberToHex(1, { size: 32 }),
-    authorization: "permit",
+    authorization,
     onBroadcast: () => {},
   })
-  assert.equal(writes, 1, "使用原编号恢复不得重复存款")
+  assert.equal(writes, initialWrites, "使用原编号恢复不得重复存款")
   const withdrawn = await transactBank("4", "withdraw", () => {})
   assert.equal(withdrawn.deposited, parseEther("6.000000000000000001"))
   await assert.rejects(
@@ -166,6 +187,13 @@ test("真实 RPC 签名：前端 Permit 存取款、拒签/切换保护、白名
   const ordinary = await transactBank("1", "deposit", () => {})
   assert.equal(ordinary.deposited, parseEther("7.000000000000000001"))
 
+  if (usePermit2) {
+    const previousWrites = writes
+    const signed = await transactBank("1", "permit", () => {})
+    assert.equal(writes - previousWrites, 1, "Permit2 已有额度时只发一笔存款交易")
+    assert.equal(signed.deposited, ordinary.deposited + parseEther("1"))
+    console.log("Permit2 preapproved deposit: 1 transaction; +1 Token in bank")
+  }
   const price = parseEther("100")
   const deadline = (await client.getBlock()).timestamp + 1200n
   const nonce = await client.readContract({

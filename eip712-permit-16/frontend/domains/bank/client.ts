@@ -24,6 +24,8 @@ import { wait } from "../../shared/request.ts"
 
 const bankAbi = parseAbi([
   "function token() view returns (address)",
+  "function permit2() view returns (address)",
+  "function depositWithPermit2(uint256 amount,bytes32 operationId,uint256 deadline,bytes signature)",
   "function supportsPermit() view returns (bool)",
   "function permitDeposit(uint256 amount,bytes32 operationId,uint256 deadline,uint8 v,bytes32 r,bytes32 s)",
   "function operationHash(address, bytes32) view returns (bytes32)",
@@ -45,6 +47,20 @@ const permitTypes = {
     { name: "deadline", type: "uint256" },
   ],
 } as const
+const permit2Types = {
+  TokenPermissions: [
+    { name: "token", type: "address" },
+    { name: "amount", type: "uint256" },
+  ],
+  PermitTransferFrom: [
+    { name: "permitted", type: "TokenPermissions" },
+    { name: "spender", type: "address" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+  ],
+} as const
+
+export type Authorization = "approve" | "permit" | "permit2"
 // 只将合约不支持接口视为不可用；RPC 故障必须交给原错误处理流程。
 function unsupported(error: unknown): false {
   if (
@@ -82,6 +98,7 @@ export type Snapshot = {
   bankAssets: bigint
   idempotent: boolean
   permitSupported: boolean
+  permit2?: Address
 }
 
 /** 钱包 RPC 边界：读取快照、模拟、签名与等待回执；HTTP 会话和最终业务核实见 operations/client.ts。 */
@@ -191,6 +208,9 @@ export function createBank(
         ])
         return true
       })().catch(unsupported))
+    const permit2 = await client
+      .readContract({ address: bank, abi: bankAbi, functionName: "permit2" })
+      .catch(unsupported)
     await assertSession()
     return {
       token,
@@ -201,6 +221,7 @@ export function createBank(
       bankAssets,
       idempotent,
       permitSupported,
+      permit2: idempotent && permit2 && permit2 !== zeroAddress ? permit2 : undefined,
     }
   }
 
@@ -210,7 +231,7 @@ export function createBank(
     progress: (message: string, hash?: Hash) => void,
     operation: {
       id: Hash
-      authorization?: "approve" | "permit"
+      authorization?: Authorization
       expectedAmount?: string
       approvalHash?: Hash
       businessHash?: Hash
@@ -312,22 +333,53 @@ export function createBank(
 
     // 授权确认后才发送存款；只授权本次金额，不请求无限额度。
     if (action === "deposit") {
+      const spender = operation.authorization === "permit2" ? state.permit2 : bank
+      if (!spender) throw new Error("当前银行未配置 Permit2，请选择其他存款方式")
       const allowance = await client.readContract({
         address: state.token,
         abi: erc20Abi,
         functionName: "allowance",
-        args: [account, bank],
+        args: [account, spender],
       })
       if (allowance < amount) {
-        progress("请在钱包确认 Token 授权（仅本次金额）…")
+        progress(
+          `请授权 Token 给${operation.authorization === "permit2" ? " Permit2" : "银行"}（仅本次金额）…`
+        )
         const { request } = await client.simulateContract({
           account,
           address: state.token,
           abi: erc20Abi,
           functionName: "approve",
-          args: [bank, amount],
+          args: [spender, amount],
         })
         await confirm(await broadcast({ ...request, chain: null }, "approval"), "授权")
+      }
+      if (operation.authorization === "permit2") {
+        const deadline = (await client.getBlock()).timestamp + 1200n
+        await assertSession()
+        progress("请签署 Permit2 授权（仅本次金额，有效期 20 分钟）…")
+        const signature = await wallet.signTypedData({
+          account,
+          domain: { name: "Permit2", chainId, verifyingContract: spender },
+          types: permit2Types,
+          primaryType: "PermitTransferFrom",
+          message: {
+            permitted: { token: state.token, amount },
+            spender: bank,
+            nonce: BigInt(operation.id),
+            deadline,
+          },
+        })
+        await assertSession()
+        const { request } = await client.simulateContract({
+          account,
+          address: bank,
+          abi: bankAbi,
+          functionName: "depositWithPermit2",
+          args: [amount, operation.id, deadline, signature],
+        })
+        progress("Permit2 签名完成，请确认存款交易（需要 Gas）…")
+        return confirm(await broadcast({ ...request, chain: null }, "business"), "Permit2 存款")
       }
     }
     const label = action === "deposit" ? "存款" : "取款"

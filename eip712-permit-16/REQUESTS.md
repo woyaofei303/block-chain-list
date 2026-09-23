@@ -94,7 +94,7 @@ function operationHash(address user, bytes32 operationId) external view returns 
 
 Permit 存款沿用相同 action=`deposit`、操作摘要与事件。页面确认银行 `supportsPermit()` 及 Token 的 `nonces` / `DOMAIN_SEPARATOR` 接口后允许选择签名；签署本次金额、Token nonce、20 分钟 deadline，再模拟并发送一笔 `permitDeposit` 交易。普通与 Permit 存款使用同一编号时只会执行一次；已完成的重放在签名校验之前返回。后端失败交易解码将 `permitDeposit` 映射到 deposit，成功仍核对原事件和操作标记。
 
-浏览器恢复记录新增可选 `authorization`（permit / approve），旧记录默认普通授权。签名本身不持久化，拒签、取消和晚返回哈希仍走原流程；中止后继续操作会重新签署当前 nonce。首次 SIWE 登录与 Permit 代币授权是两个独立签名。复现命令见 [操作指南](WALKTHROUGH.md)。
+浏览器恢复记录新增可选 `authorization`（permit / permit2 / approve），旧记录默认普通授权。签名本身不持久化，拒签、取消和晚返回哈希仍走原流程；中止后继续操作会重新签署当前 nonce。首次 SIWE 登录与 Permit 代币授权是两个独立签名。复现命令见 [操作指南](WALKTHROUGH.md)。
 
 授权、业务交易和索引更新分开。授权成功不会显示存款成功。已知业务哈希仍待打包时继续等待原交易，避免自动发出替代交易；等待超时保留待核实。替换、取消、掉入孤块等复杂钱包状态需要再次核实原操作与钱包记录，页面不会自动加价替换或创建另一笔业务。
 
@@ -123,3 +123,5 @@ PUBLIC_ORIGIN 必须和实际浏览器地址完全相同；`localhost` 与 `127.
 - 本地集成：精确金额存取款、拒签、账户切换、授权后终止并保存晚返回哈希；丢失哈希仍可核实，规范链回滚后不保持已确认。
 
 当前整合版本的验证日志保存在仓库 `output-tdd/eip712-consolidate/`，实际运行范围见 README；历史项目的测试记录不作为本次证据。
+
+Permit2 复用同一编排和存款事件，失败交易解码将 `depositWithPermit2` 映射到 deposit。银行通过只读 `permit2()` 告知实际部署地址；旧银行不支持时禁用此选项。首次或额度不足时先向 Permit2 approve 本次金额；之后签署 `PermitTransferFrom`，nonce 使用持久化 operationId，spender 固定银行。恢复优先核实已广播哈希与操作标记；签名不保存，需要时对同一 operationId 重新签署新 deadline。见 [Permit2 完整流程](PERMIT2.md)。

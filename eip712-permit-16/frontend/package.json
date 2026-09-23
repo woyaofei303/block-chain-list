@@ -17,6 +17,7 @@
     "precommit": "lint-staged && pnpm typecheck && pnpm test",
     "prepare": "cd ../.. && husky multi-chat-py-01/web/.husky",
     "test:integration": "node --test tests/local.integration.mts",
+    "test:permit2": "TEST_PERMIT2=1 node --test tests/permit.integration.mts",
     "test:permit": "node --test tests/permit.integration.mts",
     "demo:permit": "node scripts/permit-setup.mts"
   },
