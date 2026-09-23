@@ -1,5 +1,7 @@
 # Token Bank：独立全栈练习
 
+本目录保留普通授权存取款的历史练习。复用本项目实现的 Permit 版本已统一归纳到 [eip712-permit-16](../eip712-permit-16/README.md)，签名存款、NFT 白名单及完整启动命令均在该目录维护。
+
 从代币与银行合约，到钱包存取款、PostgreSQL 转账索引、REST API 和页面展示，完整流程都在本项目内。先读 [AGENTS.md](AGENTS.md)，实际操作按 [WALKTHROUGH.md](WALKTHROUGH.md) 顺序执行。
 
 本项目承接 2026-09-20 新增的 Token Bank 页面与联调流程。`tokenbankv2-08` 保留原 NFTMarket 合约及事件监听；`tokenbank-07` 和 `erc20-event-indexer-12` 保留各自练习。本项目拥有自己的合约和后端实现，运行时无需进入这些兄弟目录。

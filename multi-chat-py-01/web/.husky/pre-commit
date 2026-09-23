@@ -21,3 +21,16 @@ fi
 if git diff --cached --name-only -- cli-wallet-14/ | grep -q .; then
   npm --prefix cli-wallet-14 run precommit
 fi
+
+if git diff --cached --name-only -- eip712-permit-16/frontend/ | grep -q .; then
+  pnpm --dir eip712-permit-16/frontend precommit
+fi
+
+if git diff --cached --name-only -- eip712-permit-16/backend/ eip712-permit-16/database/ | grep -q .; then
+  npm --prefix eip712-permit-16/backend run precommit
+fi
+
+if git diff --cached --name-only -- eip712-permit-16/contracts/ | grep -q .; then
+  forge fmt --root eip712-permit-16/contracts --check
+  forge test --root eip712-permit-16/contracts
+fi

@@ -13,13 +13,13 @@
 5. 核对目标项目的 `package.json`、锁文件、`foundry.toml`、`remappings.txt`、`.gitignore` 和现有检查脚本。运行环境以实际配置为准；文档与代码冲突时先核实，不凭目录名或历史截图猜测。
 6. 开始实现前简短说明已读规则、目标目录和本次检查方式。普通可逆实现不需要再次请求许可；只对影响范围或行为的缺失信息提问。
 
-现有子级规则包括 [聊天 Web 规则](multi-chat-py-01/web/AGENTS.md)、[Token Bank 全栈规则](tokenbank-fullstack-13/AGENTS.md) 及其 [前端规则](tokenbank-fullstack-13/frontend/AGENTS.md)。修改 Next.js 项目前须读取安装版本的本地文档，并保留框架维护的规则块。各前端的 `CLAUDE.md` 仅转引同目录规则。
+现有子级规则包括 [聊天 Web 规则](multi-chat-py-01/web/AGENTS.md)、[Token Bank 全栈规则](tokenbank-fullstack-13/AGENTS.md) 及其 [前端规则](tokenbank-fullstack-13/frontend/AGENTS.md)、[EIP-712 全栈规则](eip712-permit-16/AGENTS.md) 及其 [前端规则](eip712-permit-16/frontend/AGENTS.md)。修改 Next.js 项目前须读取安装版本的本地文档，并保留框架维护的规则块。各前端的 `CLAUDE.md` 仅转引同目录规则。
 
 ## 2. 新项目命名与编号（必须遵守）
 
 - 每个新增的独立学习项目放在仓库根目录，名称使用小写英文、数字和连字符，并在**尾部**附加序号：`<project-name>-<NN>`，例如 `staking-14`。
 - 编号在整个仓库内唯一，按新建顺序递增。创建前同时检查实际一级项目目录与下方项目索引，取已有最大编号再加 1；不能用目录数量加 1，也不能每个主题重新从 `01` 开始。
-- 序号至少两位：`01` 至 `99`，之后继续 `100`。当前最大编号是 `15`，下一个应为 `16`；这是当前状态，未来必须重新计算，不能一直使用 `16`。
+- 序号至少两位：`01` 至 `99`，之后继续 `100`。当前最大编号是 `16`，下一个应为 `17`；这是当前状态，未来必须重新计算，不能一直使用 `17`。
 - 已有项目保持编号。删除或归档项目时保留占号记录，不回收编号、不填补空号、不重新按文件时间排序。修改内容或新增前端不会使旧项目变成新项目。
 - `frontend/`、`backend/`、`src/`、`contracts/`、`test/` 等项目内部目录不单独编号；`.git/`、`.github/`、`.idea/`、`.superpowers/`、`docs-tdd/`、`output-tdd/` 等配置或辅助目录也不编号。
 - 真正创建目录前再次检查编号和目标路径是否被占用；发现重复就重新计算，不覆盖或合并已有目录。默认不新建嵌套 Git 仓库。
@@ -45,6 +45,7 @@
 13. `tokenbank-fullstack-13`：独立 Token Bank 全栈闭环。先读 [项目规则](tokenbank-fullstack-13/AGENTS.md)、[README](tokenbank-fullstack-13/README.md) 和 [WALKTHROUGH](tokenbank-fullstack-13/WALKTHROUGH.md)。`contracts/` 管理银行与代币合约，`database/` 管理 PostgreSQL 表结构，`backend/` 使用 TypeScript 管理转账索引与查询，`frontend/` 按银行、钱包、转账领域组织；运行时不依赖其他练习源码。
 14. `cli-wallet-14`：TypeScript / Ethers 命令行钱包。读 [项目规则](cli-wallet-14/AGENTS.md) 与 [README](cli-wallet-14/README.md)。生成加密 keystore、查询余额、构建和签名 ERC20 EIP-1559 交易，显式确认后广播到 Sepolia；默认仅模拟，不输出私钥。
 15. `multisig-wallet-15`：Solidity / Foundry 简单多签钱包。读 [项目规则](multisig-wallet-15/AGENTS.md) 与 [README](multisig-wallet-15/README.md)。部署时固定持有人和门槛，通过交易提交与确认提案，达到门槛后任何人可执行；测试仅使用本地 EVM。
+16. `eip712-permit-16`：EIP-2612 Token、签名存款与 EIP-712 白名单 NFT 全栈练习。读 [项目规则](eip712-permit-16/AGENTS.md)、[README](eip712-permit-16/README.md) 与 [操作指南](eip712-permit-16/WALKTHROUGH.md)。从 13 复用银行与前后端、从 08/11 复用市场与 NFT，现已统一到本目录 `contracts/`、`frontend/`、`backend/`、`database/`；业务源码不跨项目导入，仅共享 09 的第三方库及仓库钩子。默认仅在本地 EVM / Anvil 验证。
 
 ## 4. 新建项目的最小交付
 
@@ -62,7 +63,7 @@ README 中的命令必须注明从仓库根目录还是项目目录执行，使�
 ### 通用要求
 
 - 先复用仓库已有实现、标准库和原生平台能力，再考虑现有依赖；确有必要时才添加新依赖。独立教学题可保留自己的实现，不为合并相似代码改变练习含义。
-- 包管理器按项目选择，不把整个仓库强制改成同一种。当前两个 Next.js 前端使用 pnpm，Node 作业、NFT 监听器和索引器使用 npm；`tokenbank-fullstack-13/backend` 与 `tokenbank-fullstack-13/frontend` 是不同包边界。
+- 包管理器按项目选择，不把整个仓库强制改成同一种。Next.js 前端使用 pnpm，Node 作业、NFT 监听器和索引器使用 npm；`tokenbank-fullstack-13` 和 `eip712-permit-16` 的 backend 与 frontend 各自是独立包边界。
 - Node、Next.js、Solidity 等版本以目标项目的约束和已安装版本为准。不要把一个项目的 EVM、优化器、引号风格或运行版本批量套到其他项目。
 - 测试验证实际行为、边界与失败后状态；优先复用现有 Node 原生测试、Python unittest、Forge 或 Remix 测试。只改文档、路径或低影响配置时，执行相关静态和路径检查即可。
 

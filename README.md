@@ -2,7 +2,7 @@
 
 区块链学习与全栈实践仓库，记录从 PoW、数字签名、Solidity 合约到事件索引和钱包页面的练习。每个项目保留自己的源码、说明、运行方式和验证入口，方便按顺序复习。
 
-**复习按目录尾部编号 `01 → 15` 进行。** GitHub 按目录名称排列，不代表学习顺序；可以直接使用下面的索引。
+**复习按目录尾部编号 `01 → 16` 进行。** GitHub 按目录名称排列，不代表学习顺序；可以直接使用下面的索引。
 
 ## 项目与复习顺序
 
@@ -23,6 +23,7 @@
 | 13 | [tokenbank-fullstack-13](tokenbank-fullstack-13/README.md) | 独立 TokenBank 全栈：合约、数据库、API、钱包、请求管理与幂等操作 |
 | 14 | [cli-wallet-14](cli-wallet-14/README.md) | 命令行钱包：加密私钥、余额、ERC20 EIP-1559 构建、签名与 Sepolia 广播 |
 | 15 | [multisig-wallet-15](multisig-wallet-15/README.md) | 多签合约钱包：固定持有人与门槛、链上提案确认、任何人执行与失败重试 |
+| 16 | [eip712-permit-16](eip712-permit-16/README.md) | 汇总已有银行、市场与 NFT 实现的独立全栈练习：Permit 存款、白名单购买及[完整命令行流程](eip712-permit-16/WALKTHROUGH.md) |
 
 `tokenbankv2-08` 沿用历史目录名，目前用于 NFTMarket；TokenBank 的前后端已经独立到 `tokenbank-fullstack-13`。
 
@@ -44,7 +45,7 @@ cd block-chain-list
 
 仓库根目录没有统一的应用启动命令。各项目使用自己的包管理器和配置：
 
-- **Node.js / 前端**：Node 作业及索引器使用 npm，两个 Next.js 前端使用 pnpm。TokenBank 全栈要求 Node.js 24+；其他项目以各自 `package.json` 为准。
+- **Node.js / 前端**：Node 作业及索引器使用 npm，Next.js 前端使用 pnpm。TokenBank 全栈要求 Node.js 24+；其他项目以各自 `package.json` 为准。
 - **Python**：聊天终端使用虚拟环境和项目自己的依赖说明。
 - **合约**：Foundry 项目使用 Forge / Cast / Anvil；Remix 练习按其网页操作指南执行，Remix 测试不直接当作 Forge 测试运行。
 - **数据库**：转账索引器与 TokenBank 全栈需要 PostgreSQL；环境配置从对应 `.env.example` 开始，不提交本地凭据。
