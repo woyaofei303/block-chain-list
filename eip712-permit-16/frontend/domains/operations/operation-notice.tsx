@@ -21,6 +21,7 @@ export function OperationNotice({
   return (
     <div className="notice info">
       <p className="break-all">操作编号：{intent.operationId}</p>
+      {intent.callsId && <p className="break-all">批次编号：{intent.callsId}</p>}
       <p>
         {intent.action === "deposit" ? "存款" : "取款"} {intent.amount} ·{" "}
         {intent.phase === "confirmed" ? "已确认" : "待核实"}

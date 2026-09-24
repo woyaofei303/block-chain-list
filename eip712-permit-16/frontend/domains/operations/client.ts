@@ -26,6 +26,9 @@ export type Intent = {
   phase: "prepared" | "approval" | "business" | "unknown" | "confirmed"
   approvalHash?: Hash
   businessHash?: Hash
+  depositMode?: "eip7702"
+  callsId?: string
+  batchPending?: boolean
 }
 // 每个账户/网络/银行保存一笔待处理操作，防止切换钱包后把旧意图带到另一作用域。
 export const intentKey = (account: string, chainId: number, bank: string) =>
@@ -69,7 +72,16 @@ export function restoreIntent(
     typeof data.phase !== "string" ||
     !["prepared", "approval", "business", "unknown", "confirmed"].includes(data.phase) ||
     (data.approvalHash !== undefined && !isHash(data.approvalHash)) ||
-    (data.businessHash !== undefined && !isHash(data.businessHash))
+    (data.businessHash !== undefined && !isHash(data.businessHash)) ||
+    (data.depositMode !== undefined && data.depositMode !== "eip7702") ||
+    (data.callsId !== undefined && (typeof data.callsId !== "string" || !data.callsId.trim())) ||
+    (data.batchPending !== undefined && typeof data.batchPending !== "boolean") ||
+    (data.depositMode === "eip7702" && data.action !== "deposit") ||
+    (data.depositMode === "eip7702" &&
+      data.authorization !== undefined &&
+      data.authorization !== "approve") ||
+    ((data.callsId !== undefined || data.batchPending !== undefined) &&
+      data.depositMode !== "eip7702")
   )
     throw new Error("本地操作记录无效，请保留记录并核对钱包，暂不创建新操作")
   return data as Intent
@@ -198,6 +210,7 @@ export async function executeIntent(
 ) {
   const { provider, signal, isCurrent, persist, progress } = options
   let current = { ...intent }
+  let batchRequestStarted = false
   const save = (patch: Partial<Intent>) => {
     current = { ...current, ...patch }
     persist(current)
@@ -236,23 +249,38 @@ export async function executeIntent(
     // 先查询再决定是否执行：即使浏览器丢了哈希，后端仍能按编号查到原合约事件。
     let result = await inspect()
     check()
-    if (result.status !== "confirmed" && options.send) {
+    const bank = createBank(
+      provider,
+      intent.chainId,
+      intent.bankAddress,
+      intent.account,
+      isCurrent,
+      signal
+    )
+    if (current.depositMode === "eip7702" && current.callsId) {
+      // 即使后端查到入账，也必须核实本练习的单笔原子批次和指定委托，不能跳过批次凭证。
+      const hash = await bank.confirmCalls(current.callsId, progress, options.send)
+      save({ phase: "business", businessHash: hash })
+      await register(hash)
+      result = await inspect()
+      check()
+    } else if (result.status !== "confirmed" && options.send) {
       // 已广播且未知时只等待原交易；已核实回滚才允许同编号重试。
       if (result.status === "failed") save({ businessHash: undefined })
-      const bank = createBank(
-        provider,
-        intent.chainId,
-        intent.bankAddress,
-        intent.account,
-        isCurrent,
-        signal
-      )
       await bank.transact(intent.action, intent.amount, progress, {
         id: intent.operationId,
         authorization: intent.authorization,
         expectedAmount: intent.amountRaw,
         approvalHash: current.approvalHash,
         businessHash: current.businessHash,
+        depositMode: current.depositMode,
+        callsId: current.callsId,
+        batchPending: current.batchPending,
+        onBatchPending: () => {
+          save({ batchPending: true })
+          batchRequestStarted = true
+        },
+        onCallsId: (id) => save({ phase: "business", callsId: id }),
         onBroadcast: (stage, hash) =>
           save(
             stage === "approval"
@@ -267,6 +295,12 @@ export async function executeIntent(
       check()
     }
     if (result.status === "confirmed") {
+      if (current.depositMode === "eip7702" && !current.callsId)
+        throw new Error(
+          "存款已入账，但缺少批次编号，尚无法核实一笔交易及指定委托；请保留记录并核对钱包"
+        )
+      if (current.depositMode === "eip7702" && result.transactionHash !== current.businessHash)
+        throw new Error("银行入账交易与原批次不一致，请保留记录核实")
       save({ phase: "confirmed", businessHash: result.transactionHash })
       progress("业务已确认。转账记录将在索引完成后显示。")
       return current
@@ -283,7 +317,15 @@ export async function executeIntent(
   } catch (cause) {
     // 即使操作之前曾确认，也要保留本次核实发现的未知状态（例如链重组）。
     save({ phase: "unknown" })
-    const error = asAppError(signal.aborted ? signal.reason : cause)
+    const originalError = asAppError(cause)
+    const error = signal.aborted ? asAppError(signal.reason) : originalError
+    // 仅明确拒签或完整回滚允许用户再次发送；超时/断线/部分执行必须保留原批次。
+    if (
+      current.depositMode === "eip7702" &&
+      (originalError.code === "BATCH_FAILED" ||
+        (batchRequestStarted && originalError.code === "WALLET_REJECTED" && !current.callsId))
+    )
+      save({ batchPending: false, callsId: undefined, businessHash: undefined })
     if (error.code === "TRANSACTION_REVERTED" && !current.businessHash)
       save({ approvalHash: undefined })
     if (error.kind !== "cancelled" && current.businessHash)

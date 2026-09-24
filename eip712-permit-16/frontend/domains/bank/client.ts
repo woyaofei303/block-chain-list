@@ -7,10 +7,12 @@ import {
   createWalletClient,
   custom,
   type EIP1193Provider,
+  encodeFunctionData,
   erc20Abi,
   type Hash,
   isAddress,
   maxUint256,
+  numberToHex,
   parseAbi,
   parseSignature,
   parseUnits,
@@ -21,6 +23,9 @@ import {
 
 import { AppError } from "../../shared/errors.ts"
 import { wait } from "../../shared/request.ts"
+
+export const METAMASK_DELEGATOR = "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B"
+const delegationCode = `0xef0100${METAMASK_DELEGATOR.slice(2).toLowerCase()}`
 
 const bankAbi = parseAbi([
   "function token() view returns (address)",
@@ -225,6 +230,65 @@ export function createBank(
     }
   }
 
+  async function batchCapability() {
+    await assertSession()
+    const capabilities = await wallet.getCapabilities({ account, chainId })
+    const status = capabilities?.atomic?.status
+    if (status !== "supported" && status !== "ready")
+      throw new Error("当前钱包或网络不支持原子批量交易，请使用支持 EIP-7702 的 MetaMask 网络")
+    const [code, implementation] = await Promise.all([
+      client.getCode({ address: account }),
+      client.getCode({ address: METAMASK_DELEGATOR }),
+    ])
+    if (code && code !== "0x" && code.toLowerCase() !== delegationCode)
+      throw new Error("当前账户未委托给题目指定的 MetaMask Delegator，请先在钱包中核对")
+    if (!implementation || implementation === "0x")
+      throw new Error("当前网络没有题目指定的 MetaMask Delegator 合约")
+    await assertSession()
+    return status
+  }
+
+  // 批次 ID 不是交易哈希。核实单笔规范回执及该区块的委托后，才交给后端核实业务事件。
+  async function confirmCalls(id: string, progress: (message: string) => void, poll = true) {
+    await assertSession()
+    progress("批量存款已提交，正在核实原批次…")
+    const deadline = Date.now() + 180_000
+    do {
+      await assertSession()
+      const result = await wallet.getCallsStatus({ id })
+      check()
+      const receipts = result.receipts ?? []
+      if (result.id !== id || result.chainId !== chainId)
+        throw new Error("批次编号或网络不匹配，请保留原操作核实")
+      if (result.statusCode === 400 && receipts.length === 0)
+        throw new AppError("business", "BATCH_FAILED", "钱包未执行批次，可使用原操作继续")
+      if (result.status === "success" || result.statusCode === 500) {
+        const receipt = receipts[0]
+        if (!result.atomic || receipts.length !== 1 || !receipt)
+          throw new Error("未取得原子执行的单笔交易凭证，请保留原操作核实")
+        if (!/^0x[0-9a-f]{64}$/i.test(receipt.transactionHash)) throw new Error("批次交易哈希无效")
+        const canonical = await client.getTransactionReceipt({ hash: receipt.transactionHash })
+        if (canonical.blockHash !== receipt.blockHash || canonical.status !== receipt.status)
+          throw new Error("批次回执与当前链不一致，请稍后核实")
+        if (canonical.status === "reverted")
+          throw new AppError("business", "BATCH_FAILED", "批量交易已回滚，可使用原操作继续")
+        if (result.status !== "success") throw new Error("批次状态与回执不一致，请核实")
+        const code = await client.getCode({ address: account, blockNumber: canonical.blockNumber })
+        if (code?.toLowerCase() !== delegationCode)
+          throw new Error("交易账户未使用题目指定的 MetaMask Delegator，请保留原操作核实")
+        await assertSession()
+        return canonical.transactionHash
+      }
+      if (result.status !== "pending")
+        throw new Error("批次失败或状态未知，请保留原操作并在钱包中核实")
+      if (!poll) break
+      await wait(1_000, signal)
+    } while (Date.now() < deadline)
+    throw new AppError("timeout", "RESULT_UNKNOWN", "批次结果待核实，请使用原操作继续查询", {
+      severity: 2,
+    })
+  }
+
   async function transact(
     action: "deposit" | "withdraw",
     text: string,
@@ -235,6 +299,11 @@ export function createBank(
       expectedAmount?: string
       approvalHash?: Hash
       businessHash?: Hash
+      depositMode?: "eip7702"
+      callsId?: string
+      batchPending?: boolean
+      onBatchPending?: () => void
+      onCallsId?: (id: string) => void
       onBroadcast: (stage: "approval" | "business", hash: Hash) => void
     }
   ) {
@@ -264,7 +333,23 @@ export function createBank(
       })
     }
     // 恢复时先等待已知哈希，避免为仍在打包的交易再次请求钱包签名。
-    if (operation.businessHash) return confirm(operation.businessHash, "业务交易")
+    if (operation.depositMode === "eip7702") {
+      if (action !== "deposit") throw new Error("批量模式仅支持存款")
+      if (operation.authorization === "permit" || operation.authorization === "permit2")
+        throw new Error("一次存款只能选择一种授权方式")
+      if (operation.callsId) {
+        const hash = await confirmCalls(operation.callsId, progress)
+        operation.onBroadcast("business", hash)
+        return hash
+      }
+      if (operation.batchPending || operation.businessHash)
+        throw new AppError(
+          "business",
+          "RESULT_UNKNOWN",
+          "钱包请求结果不明，请先核实原操作，不能重新发送批次",
+          { severity: 2 }
+        )
+    } else if (operation.businessHash) return confirm(operation.businessHash, "业务交易")
     if (operation.approvalHash) await confirm(operation.approvalHash, "授权")
     const state = await read()
     if (!state.idempotent) throw new Error("该银行为旧版，只支持查看；请配置幂等版银行")
@@ -283,6 +368,58 @@ export function createBank(
     )
     if (operation.expectedAmount !== undefined && amount.toString() !== operation.expectedAmount)
       throw new Error("金额与保存的操作不一致")
+
+    if (operation.depositMode === "eip7702") {
+      if (!operation.onCallsId || !operation.onBatchPending)
+        throw new Error("批量存款必须保存恢复记录")
+      await batchCapability()
+      progress("请在 MetaMask 确认一笔存款（授权 + 存款）；首次可能需要升级智能账户…")
+      await assertSession()
+      operation.onBatchPending()
+      // 钱包负责模拟整个批次；单独模拟 deposit 会因尚未执行 approve 而失败。
+      // 直接调用 EIP-5792，不启用 viem 的顺序交易 fallback，也不自动重试写入。
+      const result = await wallet.request(
+        {
+          method: "wallet_sendCalls",
+          params: [
+            {
+              version: "2.0.0",
+              chainId: numberToHex(chainId),
+              from: account,
+              atomicRequired: true,
+              calls: [
+                {
+                  to: state.token,
+                  data: encodeFunctionData({
+                    abi: erc20Abi,
+                    functionName: "approve",
+                    args: [bank, amount],
+                  }),
+                  value: "0x0",
+                },
+                {
+                  to: bank,
+                  data: encodeFunctionData({
+                    abi: bankAbi,
+                    functionName: "deposit",
+                    args: [amount, operation.id],
+                  }),
+                  value: "0x0",
+                },
+              ],
+            },
+          ],
+        },
+        { retryCount: 0 }
+      )
+      if (!result || typeof result.id !== "string" || !result.id.trim())
+        throw new Error("钱包未返回有效批次编号，请保留原操作核实")
+      operation.onCallsId(result.id) // 终止或切换账户后晚返回的 ID 也必须保存。
+      check()
+      const hash = await confirmCalls(result.id, progress)
+      operation.onBroadcast("business", hash)
+      return hash
+    }
     async function broadcast(
       request: Parameters<typeof wallet.writeContract>[0],
       stage: "approval" | "business"
@@ -396,5 +533,5 @@ export function createBank(
     return confirm(hash, label)
   }
 
-  return { read, transact }
+  return { read, transact, batchCapability, confirmCalls }
 }

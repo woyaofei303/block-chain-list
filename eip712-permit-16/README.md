@@ -1,5 +1,7 @@
 # EIP-712 全栈：Permit / Permit2 存款与白名单 NFT
 
+EIP-7702 练习见 [前端说明](frontend/README.md#eip-7702-一笔存款)，四种方式保留在同一页面，默认沿用 Permit。
+
 Permit2 练习见 [PERMIT2.md](PERMIT2.md)：原理、首次授权与交易次数、部署、前端操作、CLI 签名及验证日志。
 
 这是本练习的统一入口。现有实现已集中到本目录，安装、编译、运行、测试和复习均从这里开始。先读 [AGENTS.md](AGENTS.md)，按 [WALKTHROUGH.md](WALKTHROUGH.md) 执行完整命令行流程；请求、登录、幂等与恢复细节见 [REQUESTS.md](REQUESTS.md)。
@@ -8,7 +10,7 @@ Permit2 练习见 [PERMIT2.md](PERMIT2.md)：原理、首次授权与交易次�
 
 - `JulianToken`：OpenZeppelin EIP-2612 ERC20Permit，名称 `Julian Token`，符号 `JUL`，18 位精度，部署者一次获得 1,000,000 JUL。
 - `IdempotentTokenBank`：普通存款、Permit / Permit2 存款、提款和操作编号去重，四个入口均防重入；直接转币到银行不会增加个人可提余额。
-- 原 TokenBank 全栈页面：保留钱包连接、精确金额、三种余额、历史索引、SIWE 登录、终止与恢复，支持“普通授权 / Permit / Permit2”。UI 延用 Tailwind，参考 Uniswap 的中央卡片、分层输入区和粉色主按钮。
+- 原 TokenBank 全栈页面：保留钱包连接、精确金额、三种余额、历史索引、SIWE 登录、终止与恢复，支持“普通授权 / Permit / Permit2 / EIP-7702”。UI 延用 Tailwind，参考 Uniswap 的中央卡片、分层输入区和粉色主按钮。
 - `BlocklightGenesis`：复用已有 `Blocklight Genesis / BLGT` ERC721，owner 铸造，tokenId 从 0 开始。
 - `PermitNFTMarket`：项目方签署 EIP-712 白名单，指定买家凭签名购买指定订单；继承的普通购买和回调购买入口均禁用。NFT 铸造、上架和购买提供命令行演示与自动测试，前端专注银行页面。
 
@@ -30,6 +32,7 @@ eip712-permit-16/
 │   │   ├── BaseERC20.sol              从 13 保留普通授权回归用 Token
 │   │   └── TokenBank.sol              从 13 保留旧银行兼容测试
 │   ├── lib/permit2/                  固定官方源码和必要 Solmate 依赖
+│   ├── script/DeploySepolia.s.sol     Sepolia Token + 银行部署入口
 │   ├── test/                         普通银行、幂等与签名测试
 │   └── foundry.toml
 ├── frontend/                         从 13 复用 Next.js / Wagmi 页面
@@ -119,9 +122,89 @@ TEST_PERMIT=1 npm --prefix backend run test:integration
 
 后端集成需要 PostgreSQL，使用随机 schema 和独立 Anvil，结束自动清理。全部交易测试无需人工钱包签名或公共 RPC。全套质量检查、资产转移日志生成和浏览器运行命令见 [操作指南](WALKTHROUGH.md)。
 
+## Sepolia 部署（MetaMask 签名）
+
+[部署脚本](contracts/script/DeploySepolia.s.sol) 创建 `JulianToken` 和 `IdempotentTokenBank`，共两笔交易；部署账户获得 1,000,000 JUL，银行初始存款为零。普通授权、Permit、Permit2、EIP-7702 共用这一个银行。
+
+脚本仅允许 Sepolia（chain ID `11155111`），广播前检查两个已有官方合约的代码：
+
+- Permit2：`0x000000000022D473030F116dDEE9F6B43aC78BA3`，见 [Uniswap 部署表](https://developers.uniswap.org/docs/protocols/v3/deployments/v3-ethereum-deployments)。
+- MetaMask Delegator：`0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B`，由钱包在 EIP-7702 存款时处理账户升级。
+
+部署不会自动完成 EIP-7702 账户升级、Token 授权或存款。使用支持 `--browser` 的 Foundry（本次为 1.8.1），由 MetaMask 确认每笔部署；流程见 [Foundry 官方说明](https://www.getfoundry.sh/guides/browser-wallet)。
+
+从仓库根目录进入合约目录，先模拟；`DEPLOYER_ADDRESS` 是公开钱包地址：
+
+```bash
+cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16/contracts
+export SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+export DEPLOYER_ADDRESS=0x000071424bb08b910f0786e04D964A63D64bF1Ba
+
+forge script script/DeploySepolia.s.sol:DeploySepolia \
+  --sig 'run(address)' "$DEPLOYER_ADDRESS" \
+  --sender "$DEPLOYER_ADDRESS" \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --with-gas-price 2gwei --priority-gas-price 1000000
+```
+
+在安装 MetaMask 的浏览器中切到 Sepolia，核对模拟结果后广播。以下命令在同一终端执行，钱包选择上述部署地址：
+
+```bash
+forge script script/DeploySepolia.s.sol:DeploySepolia \
+  --sig 'run(address)' "$DEPLOYER_ADDRESS" \
+  --sender "$DEPLOYER_ADDRESS" \
+  --rpc-url "$SEPOLIA_RPC_URL" \
+  --with-gas-price 2gwei --priority-gas-price 1000000 \
+  --broadcast --browser --slow
+```
+
+Foundry 会打开 `http://127.0.0.1:9545`，连接 MetaMask 后逐笔确认。两笔交易的 ETH 转账金额都是 `0`，只支付 Gas；最大单价设为 `2 gwei`，总费用按本次模拟的 Gas 和钱包显示核对。若当前基础费超过上限，先重新估算再调整。
+
+成功后以 `contracts/broadcast/DeploySepolia.s.sol/11155111/run-latest.json` 中的成功回执为准；`dry-run/` 下的地址不是已部署证据。中途失败或超时先查这份记录和链上回执，不要直接重跑新部署；确认已完成部分及待处理 nonce 后，原命令加 `--resume` 恢复。
+
+前后端须使用同一组 Sepolia 地址：前端 `NEXT_PUBLIC_CHAIN_ID=11155111`、`NEXT_PUBLIC_BANK_ADDRESS=<成功部署的银行地址>`；后端 `CHAIN_ID=11155111`、`RPC_URL=<Sepolia RPC>`、`TOKEN_ADDRESS=<成功部署的 JUL 地址>`、`BANK_ADDRESS=<成功部署的银行地址>`、`START_BLOCK=<Token 部署区块>`。使用独立数据库及端口，保留本地 Anvil 配置和状态；前端环境变量改变后重新构建。
+
+2026-09-24 已通过 27 项合约测试、格式检查和 Sepolia RPC 部署模拟。模拟得到两笔 CREATE，总 Gas 上限估算 `2,155,467`，按 `2 gwei` 为 `0.004310934 SepoliaETH`。此记录仅为模拟，实际部署状态以钱包签名后的回执为准。
+
+### 本次部署与测试页面（2026-09-24）
+
+用户通过 MetaMask 确认两笔交易，Sepolia 回执均为成功，总实际费用 `0.001796863833098025 SepoliaETH`：
+
+```text
+部署账户：0x000071424bb08b910f0786e04D964A63D64bF1Ba
+JUL：     0x911B0B941753e6F3c36a92e4Df76B7b78F3277A2
+银行：    0x0c0848F28228cffF0A60538E6e2c2e364f8168Bc
+Token 部署区块：11770843
+银行部署区块：  11770845
+```
+
+交易证据：[Token 部署](https://sepolia.etherscan.io/tx/0x13ac3e2d8b41800bac763eee7385e9c444070b50d4fe83e8df464ac3ec77b51d)、[银行部署](https://sepolia.etherscan.io/tx/0x19a9c7841e7f42383d03b33173217b391f2fb8b859f3c38e25d23205446315db)。链上只读核对已确认银行的 Token / Permit2 地址、JUL 精度 `18`，以及部署账户持有 `1,000,000 JUL`。
+
+Sepolia 页面：[http://127.0.0.1:3019](http://127.0.0.1:3019)，后端 `13019`，独立数据库 `tokenbank_sepolia_16`。配置保存在本机忽略的 [session.env](../output-tdd/eip7702-sepolia/session.env)。索引等待 `12` 个确认，刚完成的交易记录会晚于钱包余额出现。
+
+为保留 `3018` 的 Anvil 页面，本次 Sepolia 前端在 `output-tdd/eip7702-sepolia/frontend/` 的源码副本使用现有依赖构建（`build --webpack`）；该副本不是源码维护入口。服务停止后，可分别在两个终端从本项目目录恢复，跳过部署和建库：
+
+```bash
+cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+set -a
+source ../output-tdd/eip7702-sepolia/session.env
+set +a
+env -u DATABASE_URL -u PGOPTIONS node backend/src/main.ts
+```
+
+```bash
+cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+set -a
+source ../output-tdd/eip7702-sepolia/session.env
+set +a
+pnpm --dir ../output-tdd/eip7702-sepolia/frontend start --port "$FRONTEND_PORT"
+```
+
+公共链实测目前完成的是部署；EIP-7702 存款仍需在新页面连接 MetaMask 后实际签名验证。
+
 ## 限制
 
-- 仅演示本地 EVM / Anvil，没有本次公共链部署或课程提交。旧部署不能因源码迁移自动升级。
+- 默认演示本地 EVM / Anvil；Sepolia 部署入口与验证范围见上节。没有课程提交，旧部署不能因源码迁移自动升级。
 - 标准无手续费、无 rebase Token；前端 Permit version 固定为本项目的 `1`。签名面向 EOA，没有 ERC-1271。
 - SIWE、Token nonce、白名单 nonce、operationId 分别负责不同权限与去重，不可互相替代。签名不保存在浏览器恢复记录。
 - 索引器只索引 JUL 的 Transfer；NFT 转移用回执、`ownerOf` 和测试断言核对，未新增 NFT 数据库索引或交易页面。

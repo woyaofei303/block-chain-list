@@ -7,15 +7,20 @@ import { test } from "node:test"
 import { setTimeout } from "node:timers/promises"
 import {
   createPublicClient,
+  createTestClient,
   createWalletClient,
   type EIP1193Provider,
+  encodeAbiParameters,
+  encodeFunctionData,
+  erc20Abi,
+  type Hash,
   http,
   numberToHex,
   parseAbi,
   parseEther,
 } from "viem"
 import { foundry } from "viem/chains"
-import { createBank } from "../domains/bank/client.ts"
+import { createBank, METAMASK_DELEGATOR } from "../domains/bank/client.ts"
 
 test("本地链完成授权、存款、取款，并在拒签及账户切换时停止", {
   timeout: 60_000,
@@ -25,9 +30,13 @@ test("本地链完成授权、存款、取款，并在拒签及账户切换时�
   const reserved = reservation.address()
   assert.ok(reserved && typeof reserved === "object")
   await new Promise<void>((resolve) => reservation.close(() => resolve()))
-  const anvil = spawn("anvil", ["--port", String(reserved.port), "--silent"], {
-    stdio: "ignore",
-  })
+  const anvil = spawn(
+    "anvil",
+    ["--port", String(reserved.port), "--hardfork", "prague", "--silent"],
+    {
+      stdio: "ignore",
+    }
+  )
   t.after(async () => {
     if (anvil.exitCode === null && anvil.signalCode === null) {
       const stopped = once(anvil, "exit")
@@ -206,4 +215,133 @@ test("本地链完成授权、存款、取款，并在拒签及账户切换时�
   const donated = await bank.read()
   assert.equal(donated.bankAssets, parseEther("1"))
   assert.equal(donated.deposited, 0n)
+
+  await t.test(
+    "官方 Delegator 字节码在隔离 Anvil 中单笔存款，失败时授权与账本整体回滚",
+    {
+      skip: !process.env.EIP7702_RPC_URL,
+    },
+    async () => {
+      assert.ok(bankReceipt.contractAddress)
+      assert.ok(tokenReceipt.contractAddress)
+      // 公共 RPC 仅取官方已部署字节码。写入只使用上面随机端口的本地 Anvil。
+      const source = createPublicClient({
+        transport: http(process.env.EIP7702_RPC_URL, { retryCount: 0 }),
+      })
+      const code = await source.getCode({ address: METAMASK_DELEGATOR })
+      assert.ok(code && code.length > 100)
+      const local = createTestClient({ mode: "anvil", transport, chain: foundry })
+      await local.setCode({ address: METAMASK_DELEGATOR, bytecode: code })
+      await local.setCode({ address: account, bytecode: `0xef0100${METAMASK_DELEGATOR.slice(2)}` })
+      let batchHash: Hash | undefined
+      let breakDeposit = false
+      const batchProvider = {
+        async request(args: { method: string; params?: unknown }) {
+          if (args.method === "wallet_getCapabilities")
+            return { "0x7a69": { atomic: { status: "supported" } } }
+          if (args.method === "wallet_sendCalls") {
+            const [batch] = args.params as [
+              { calls: { to: `0x${string}`; data: `0x${string}`; value: `0x${string}` }[] },
+            ]
+            const calls = batch.calls.map((call) => ({
+              target: call.to,
+              value: BigInt(call.value),
+              callData: call.data,
+            }))
+            if (breakDeposit)
+              calls[1].callData = encodeFunctionData({
+                abi: parseAbi(["function deposit(uint256,bytes32)"]),
+                functionName: "deposit",
+                args: [parseEther("2"), numberToHex(7703, { size: 32 })],
+              })
+            batchHash = await wallet.writeContract({
+              account,
+              address: account,
+              abi: parseAbi(["function execute(bytes32 mode, bytes executionCalldata) payable"]),
+              functionName: "execute",
+              args: [
+                `0x01${"00".repeat(31)}`,
+                encodeAbiParameters(
+                  [
+                    {
+                      type: "tuple[]",
+                      components: [
+                        { name: "target", type: "address" },
+                        { name: "value", type: "uint256" },
+                        { name: "callData", type: "bytes" },
+                      ],
+                    },
+                  ],
+                  [calls]
+                ),
+              ],
+              gas: 500_000n,
+            })
+            return { id: batchHash }
+          }
+          if (args.method === "wallet_getCallsStatus") {
+            assert.ok(batchHash)
+            const receipt = await rpc.request({
+              method: "eth_getTransactionReceipt",
+              params: [batchHash],
+            })
+            return {
+              id: batchHash,
+              version: "2.0.0",
+              chainId: "0x7a69",
+              atomic: true,
+              status: !receipt ? 100 : receipt.status === "0x1" ? 200 : 500,
+              receipts: receipt ? [receipt] : [],
+            }
+          }
+          return provider.request(args as Parameters<typeof provider.request>[0])
+        },
+      } as EIP1193Provider
+      const batched = createBank(batchProvider, 31337, bankReceipt.contractAddress, account)
+      const beforeBatch = await batched.read()
+      const nonce = await rpc.getTransactionCount({ address: account })
+      const batchOperation = {
+        id: numberToHex(7702, { size: 32 }),
+        depositMode: "eip7702" as const,
+        onBatchPending: () => {},
+        onCallsId: () => {},
+        onBroadcast: () => {},
+      }
+      const hash = await batched.transact(
+        "deposit",
+        "1.000000000000000001",
+        () => {},
+        batchOperation
+      )
+      assert.ok(hash)
+      assert.equal(await rpc.getTransactionCount({ address: account }), nonce + 1)
+      const afterBatch = await batched.read()
+      assert.equal(afterBatch.deposited, beforeBatch.deposited + parseEther("1.000000000000000001"))
+      assert.equal(
+        afterBatch.walletBalance,
+        beforeBatch.walletBalance - parseEther("1.000000000000000001")
+      )
+      const receipt = await rpc.getTransactionReceipt({ hash })
+      assert.equal(receipt.logs.length, 3, "同一回执包含 Approval、Transfer、OperationExecuted")
+      breakDeposit = true
+      await assert.rejects(
+        batched.transact("deposit", "1", () => {}, {
+          ...batchOperation,
+          id: numberToHex(7703, { size: 32 }),
+        }),
+        /回滚/
+      )
+      assert.deepEqual(await batched.read(), afterBatch)
+      assert.equal(
+        await rpc.readContract({
+          address: tokenReceipt.contractAddress,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [account, bankReceipt.contractAddress],
+        }),
+        0n,
+        "失败批次的 approve 也必须回滚"
+      )
+    }
+  )
 })

@@ -6,7 +6,12 @@ import { getConnection } from "wagmi/actions"
 import { AmountFields } from "@/domains/bank/amount-fields"
 import { BankBalances } from "@/domains/bank/bank-balances"
 import { BankSettingsDialog } from "@/domains/bank/bank-settings-dialog"
-import { type Authorization, createBank, parseAmount } from "@/domains/bank/client"
+import {
+  type Authorization,
+  createBank,
+  METAMASK_DELEGATOR,
+  parseAmount,
+} from "@/domains/bank/client"
 import {
   clearConfirmedIntent,
   executeIntent,
@@ -39,7 +44,7 @@ export function BankWorkspace({
   const queryClient = useQueryClient()
   const [action, setAction] = useState<"deposit" | "withdraw">("deposit")
   const [amount, setAmount] = useState("")
-  const [authorization, setAuthorization] = useState<Authorization>("permit")
+  const [authorization, setAuthorization] = useState<Authorization | "eip7702">("permit")
   const [intent, setIntent] = useState<Intent>()
   // stopped 控制查询是否可自动启动；mutation.isPending 只表示这次提交是否仍在执行。
   const [stopped, setStopped] = useState(false)
@@ -87,7 +92,9 @@ export function BankWorkspace({
       if (saved) {
         setIntent(saved)
         setAction(saved.action)
-        setAuthorization(saved.authorization ?? "approve")
+        setAuthorization(
+          saved.depositMode === "eip7702" ? "eip7702" : (saved.authorization ?? "approve")
+        )
         setAmount(saved.amount)
         setStopped(true)
         setStatus({
@@ -163,6 +170,14 @@ export function BankWorkspace({
     refetchInterval: busy || stopped ? false : 15_000,
   })
   const snapshot = enabled && !balance.isError ? balance.data : undefined
+  const batchMode = authorization === "eip7702"
+  const batchKey = ["batch-capability", targetChain.id, bankAddress, address, connector?.uid]
+  const batch = useQuery({
+    queryKey: batchKey,
+    enabled: enabled && batchMode && action === "deposit" && !stopped && !busy && !intent,
+    queryFn: async ({ signal }) => (await bank(signal)).batchCapability(),
+    retry: false,
+  })
   const available = snapshot
     ? action === "deposit"
       ? snapshot.walletBalance
@@ -185,15 +200,21 @@ export function BankWorkspace({
       ? "approve"
       : authorization)
 
+  const batchUnavailable = deposit && batchMode && (!batch.data || batch.isError)
+
   let submitLabel = deposit
-    ? depositAuthorization !== "approve"
-      ? "签名并存入"
-      : "存入 Token"
+    ? batchMode
+      ? "一笔授权并存入"
+      : depositAuthorization !== "approve"
+        ? "签名并存入"
+        : "存入 Token"
     : "取出 Token"
   if (busy) submitLabel = "等待钱包确认…"
   else if (!snapshot) submitLabel = balance.isError ? "余额暂不可用" : "正在读取余额…"
   else if (intent) submitLabel = "请处理已保存的操作"
   else if (!snapshot.idempotent) submitLabel = "旧版银行仅可查看"
+  else if (batchUnavailable)
+    submitLabel = batch.isError ? "当前钱包无法批量存款" : "正在检查批量能力…"
   else if (!amount) submitLabel = "输入金额"
 
   function openSettings() {
@@ -217,6 +238,7 @@ export function BankWorkspace({
       !address ||
       !validBank ||
       !snapshot?.idempotent ||
+      batchUnavailable ||
       !parsed ||
       amountError
     )
@@ -227,7 +249,9 @@ export function BankWorkspace({
       chainId: targetChain.id,
       bankAddress: bankAddress.toLowerCase() as Address,
       action,
-      authorization: deposit ? depositAuthorization : undefined,
+      authorization:
+        deposit && depositAuthorization !== "eip7702" ? depositAuthorization : undefined,
+      depositMode: deposit && batchMode ? "eip7702" : undefined,
       amount,
       amountRaw: parsed.toString(),
       phase: "prepared",
@@ -248,6 +272,7 @@ export function BankWorkspace({
     execution.current?.abort()
     setStopped(true)
     void queryClient.cancelQueries({ queryKey: balanceKey })
+    void queryClient.cancelQueries({ queryKey: batchKey })
     if (snapshot && address)
       void queryClient.cancelQueries({
         queryKey: [
@@ -309,9 +334,9 @@ export function BankWorkspace({
         <form onSubmit={submit}>
           {deposit && (
             <fieldset disabled={busy || !!intent} className="mb-3 px-2">
-              <legend className="sr-only">存款授权方式</legend>
-              <div className="flex gap-2 rounded-2xl bg-[#f6f5f7] p-1">
-                {(["approve", "permit", "permit2"] as const).map((mode) => (
+              <legend className="mb-2 text-xs text-muted">存款方式</legend>
+              <div className="grid grid-cols-2 gap-1 rounded-2xl bg-[#f6f5f7] p-1">
+                {(["approve", "permit", "permit2", "eip7702"] as const).map((mode) => (
                   <label key={mode} className="flex-1">
                     <input
                       type="radio"
@@ -329,11 +354,32 @@ export function BankWorkspace({
                       }}
                     />
                     <span className="flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[13px] text-muted peer-checked:bg-white peer-checked:font-semibold peer-checked:text-heading peer-checked:shadow-sm peer-focus-visible:outline-2 peer-focus-visible:outline-accent peer-disabled:cursor-not-allowed peer-disabled:opacity-40">
-                      {mode === "approve" ? "普通授权" : mode === "permit" ? "Permit" : "Permit2"}
+                      {mode === "approve"
+                        ? "普通授权"
+                        : mode === "permit"
+                          ? "Permit 一笔存款"
+                          : mode === "permit2"
+                            ? "Permit2 存款"
+                            : "EIP-7702 一笔存款"}
                     </span>
                   </label>
                 ))}
               </div>
+              {batchMode && (
+                <div className="mt-2 space-y-1 px-1 text-xs text-muted">
+                  <p>MetaMask 将本次金额的授权与存款合并。首次可能提示升级智能账户。</p>
+                  <p className="break-all">Delegator：{METAMASK_DELEGATOR}</p>
+                  {enabled && !intent && (
+                    <p role="status">
+                      {batch.isError
+                        ? errorMessage(batch.error)
+                        : batch.data
+                          ? "钱包支持原子批量交易"
+                          : "正在检查钱包与网络…"}
+                    </p>
+                  )}
+                </div>
+              )}
               {snapshot && !snapshot.permitSupported && (
                 <p className="mt-2 px-1 text-[11px] text-muted">
                   当前 Token 或银行不支持 EIP-2612，可选择其他可用方式。
@@ -380,6 +426,7 @@ export function BankWorkspace({
                 !!intent ||
                 storageError ||
                 !snapshot?.idempotent ||
+                batchUnavailable ||
                 !parsed ||
                 !!amountError
               }
@@ -418,7 +465,13 @@ export function BankWorkspace({
           )}
           {enabled && balance.error && (
             <div className="notice error" role="alert">
-              余额读取失败，请检查银行地址及网络。
+              余额读取失败，请核对钱包 RPC 和银行地址。
+              {targetChain.id === 31337 && (
+                <p className="mt-1 break-all">
+                  本页本地 RPC：{targetChain.rpcUrls.default.http[0]}。相同链 ID
+                  的不同本地链不能混用。
+                </p>
+              )}
               <button
                 type="button"
                 className="text-button"
@@ -452,11 +505,13 @@ export function BankWorkspace({
         </form>
         <p className="px-1 pt-3.5 pb-1.5 text-center text-[11px] text-[#827787]">
           {deposit
-            ? depositAuthorization === "permit"
-              ? "先签署本次额度（20 分钟有效），再确认存款交易。"
-              : depositAuthorization === "permit2"
-                ? "先检查 Permit2 额度，不足时授权本次金额；再签名并存入。已有额度时只需一笔交易。"
-                : "授权不足时，仅授权本次金额，再确认存款。"
+            ? batchMode
+              ? "一笔交易完成授权与存款；失败时整体回滚。"
+              : depositAuthorization === "permit"
+                ? "先签署本次额度（20 分钟有效），再确认存款交易。"
+                : depositAuthorization === "permit2"
+                  ? "先检查 Permit2 额度，不足时授权本次金额；再签名并存入。已有额度时只需一笔交易。"
+                  : "授权不足时，仅授权本次金额，再确认存款。"
             : "取出后，Token 将转回当前连接的钱包。"}
         </p>
       </section>

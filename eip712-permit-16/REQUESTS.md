@@ -125,3 +125,5 @@ PUBLIC_ORIGIN 必须和实际浏览器地址完全相同；`localhost` 与 `127.
 当前整合版本的验证日志保存在仓库 `output-tdd/eip712-consolidate/`，实际运行范围见 README；历史项目的测试记录不作为本次证据。
 
 Permit2 复用同一编排和存款事件，失败交易解码将 `depositWithPermit2` 映射到 deposit。银行通过只读 `permit2()` 告知实际部署地址；旧银行不支持时禁用此选项。首次或额度不足时先向 Permit2 approve 本次金额；之后签署 `PermitTransferFrom`，nonce 使用持久化 operationId，spender 固定银行。恢复优先核实已广播哈希与操作标记；签名不保存，需要时对同一 operationId 重新签署新 deadline。见 [Permit2 完整流程](PERMIT2.md)。
+
+EIP-7702 模式将授权和存款放在同一原子批次，具体见 [前端说明](frontend/README.md#eip-7702-一笔存款)。本地意图额外保存 `depositMode: "eip7702"`、`batchPending` 与不透明 `callsId`；旧记录没有这些字段时仍按普通流程恢复。钱包写入前持久化 `batchPending`，返回后先保存 `callsId`，再检查取消。查询原批次得到单笔成功回执并核对指定委托后，才登记交易哈希并沿用后端业务核实；即使后端先查到入账，也不能跳过批次核实。写入断线但无批次编号时禁止重发；明确拒签或完整回滚才解除批次等待标记，保留原操作编号供用户手动继续。
