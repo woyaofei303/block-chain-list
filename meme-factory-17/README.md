@@ -1,6 +1,8 @@
 # 最小代理 ERC20 Meme 铸币工厂
 
-本项目根据本次练习题实现：发行者通过 `deployMeme` 创建 ERC20 最小代理，买家通过 `mintMeme` 按固定批量付费铸币；每笔费用的 1% 给项目方，剩余部分给发行者。包含完整 Foundry 配置、关键中文注释、行为测试和本次实测日志。
+本项目根据本次练习题实现：发行者通过 `deployMeme` 创建 ERC20 最小代理，买家通过 `mintMeme` 按固定批量付费铸币；每笔费用的 1% 给项目方，剩余部分给发行者。包含完整 Foundry 配置、关键中文注释、行为测试、可执行部署脚本和本次实测日志。
+
+完整操作顺序：安装工具与检查依赖 → 运行测试 → 脚本模拟 → 启动 Anvil → 脚本部署工厂 → 从广播记录取得地址 → 创建 Meme → 付费铸造与核对分账 → 铸满后验证拒绝超发。第 4 节负责测试和模拟，第 6 节逐步执行本地部署及业务验收。
 
 题目中的 `deployInscription` 按同一创建操作理解，对外接口统一使用题目要求的 `deployMeme`。
 
@@ -41,6 +43,7 @@ price        = 1,000,000,000 wei / 枚（1 gwei / 枚）
 3. [MemeToken.sol](src/MemeToken.sol)：从构造函数、`initialize`、元数据查询到 `mint` 阅读。
 4. [MemeFactory.sol](src/MemeFactory.sol)：从构造函数、`deployMeme` 到 `mintMeme` 与 `_pay` 阅读。
 5. [MemeFactory.t.sol](test/MemeFactory.t.sol)：先看分账、上限两项题面测试，再看代理、异常回滚和重入测试。
+6. [DeployMemeFactory.s.sol](script/DeployMemeFactory.s.sol)：部署入口，读取本节说明后按第 6 节在 Anvil 执行。`test/` 验证行为，`script/` 生成并执行部署交易。
 
 ```text
 项目方部署 MemeFactory
@@ -95,7 +98,8 @@ meme-factory-17/
 │   ├── forge-std/               测试库及其许可证
 │   └── openzeppelin-contracts/  合约库及其许可证
 ├── src/                        本项目合约
-└── test/                       本项目测试
+├── test/                       本项目测试
+└── script/DeployMemeFactory.s.sol  工厂及共享实现的部署入口
 ```
 
 只复制整个 `meme-factory-17` 目录也能编译和测试，不需要第 09 个项目。依赖是从官方仓库独立安装的固定版本源码，保留原始许可证；继续由外层学习仓库管理版本，不在项目内创建另一套 Git 仓库。
@@ -125,7 +129,15 @@ forge test --root "$PWD" -vv
 
 编译输入全部位于本项目；临时输出仍遵守学习仓库约定，写到项目旁的 `../output-tdd/meme-factory-17/`，该路径不提供任何编译依赖。
 
-## 4. 编译、测试与保存日志
+## 4. 编译、测试、脚本模拟与保存日志
+
+先区分三个入口：
+
+- `forge build`：编译源码，生成 ABI 和字节码，不部署合约。
+- `forge create`：可直接部署指定的一个合约，不执行 `script/`。这里仅用于解释旧命令的含义，本项目不采用该部署方式。
+- `forge script script/DeployMemeFactory.s.sol:DeployMemeFactory ...`：执行部署脚本的 `run()`，由脚本安排部署和调用；不加 `--broadcast` 时仅模拟，加上后才发送脚本标记的交易。本项目用脚本保存部署流程，目前只执行 `new MemeFactory()`，部署结果与直接创建工厂一致。
+
+脚本仍需通过命令启动；它将部署逻辑保存在 Solidity 文件中，命令只负责选择脚本、网络、发送者以及是否广播。根据仓库规则，本项目部署统一使用 `forge script`，不运行 `forge create`。脚本在需要时会先编译，因此单独运行 `forge build` 是提前检查编译结果，并不能替代部署。
 
 以下命令均从**仓库根目录**执行；单元测试不需要启动 Anvil：
 
@@ -134,6 +146,17 @@ forge fmt --root meme-factory-17 --check
 forge build --root meme-factory-17
 forge test --root meme-factory-17 -vv
 ```
+
+测试通过后，从**仓库根目录**运行部署脚本的本地模拟，不需要启动 Anvil，也不需要 RPC 或钱包私钥：
+
+```bash
+forge script --root meme-factory-17 \
+  meme-factory-17/script/DeployMemeFactory.s.sol:DeployMemeFactory
+```
+
+预期输出 `Script ran successfully`，并返回 `factory` 地址。这个地址只存在于此次模拟，不能用于随后连接 Anvil 的调用。要获得真正写入本地链的合约，继续执行第 6 节。
+
+脚本在 `vm.startBroadcast()` 与 `vm.stopBroadcast()` 之间部署工厂，工厂构造函数自动部署共享实现。`startBroadcast()` 只是标记要生成的交易；命令行没有 `--broadcast` 时不会发送。实际发送者由命令行指定，工厂的 `projectOwner()` 应是部署账户，而不是脚本合约地址。
 
 保存完整测试日志，`pipefail` 保证测试失败不会被 `tee` 掩盖：
 
@@ -156,7 +179,7 @@ forge test --root meme-factory-17 --match-test testCloneCreationUsesLessGasThanD
 forge test --root meme-factory-17 --gas-report
 ```
 
-本项目的 `out`、编译缓存和完整本地日志在 `output-tdd/meme-factory-17/`，默认忽略、不提交。下一节的日志摘要保留在本文，克隆仓库后也能阅读；完整日志可按上面的命令重新生成。
+本项目的 `out`、编译缓存、脚本广播记录和完整本地日志在 `output-tdd/meme-factory-17/`，默认忽略、不提交。下一节的日志摘要保留在本文，克隆仓库后也能阅读；完整日志可按上面的命令重新生成。
 
 ## 5. 本次测试记录
 
@@ -208,6 +231,22 @@ Gas 对比使用同一编译设置：代理一侧包含创建、初始化、发�
 
 同日按独立工程要求，将依赖改为从官方固定版本安装到本项目 `lib/`。原目录重新通过格式检查、构建和 18 项测试；另外只复制本项目到独立验证目录，用全新缓存离线编译、运行全部 18 项测试（含 256 组模糊输入）也通过。核对编译缓存中的 34 个源码输入，全部来自独立副本内部，没有读取兄弟项目的文件。此次日志保存在 `output-tdd/meme-factory-17/independent-test.log`、`standalone-build.log` 和 `standalone-test.log`；构建仍保留前述 lint 提示。
 
+同日补齐 `script/DeployMemeFactory.s.sol` 后，重新通过格式检查、构建、18 项测试（含 256 组模糊输入）与无 RPC 的脚本模拟。按第 6 节的 Bash 命令在独立 Anvil 完整执行，实际输出节选：
+
+```text
+18 tests passed, 0 failed, 0 skipped (18 total tests)
+Script ran successfully.
+SIMULATION COMPLETE. To broadcast these transactions, add --broadcast and wallet configuration(s) to the previous command.
+ONCHAIN EXECUTION COMPLETE & SUCCESSFUL.
+Platform received wei: 1000000000
+Issuer received wei: 99000000000
+Error: execution reverted: Supply cap reached
+```
+
+部署回执成功，工厂与实现合约代码均非空；`projectOwner()` 等于命令行指定的项目方。模拟后再部署，项目方 nonce 为 `1`，核对模拟未额外发送交易。创建的代理运行时代码为 45 字节，三次铸造回执均成功，买家余额与总供应量均为 `300`，工厂 ETH 余额为 `0`。最后一行是铸满后的预期拒绝，不是部署失败。
+
+此次完整流程日志为 `output-tdd/meme-factory-17/script-readme-replay.log`；无 RPC 模拟和部署状态断言分别保存在同目录 `script-simulation.log`、`script-verification.log`。脚本模拟期间还出现 Foundry 调试源码解析与缺少 Etherscan 配置的警告，但模拟及本地部署均成功；本地流程不依赖浏览器验证服务。
+
 ## 6. 命令行完整演练：部署 → 创建 → 铸造 → 验证分账
 
 本节只连接独立本地 Anvil，使用节点解锁的模拟账户，不输入或打印私钥。示例端口为 `18557`；如果已占用，换一个空闲端口并同步 RPC，不能停止不明进程。
@@ -234,6 +273,9 @@ anvil --host 127.0.0.1 --port 18557 --chain-id 31337 --quiet
 bash
 cd meme-factory-17
 set -euo pipefail
+forge fmt --root "$PWD" --check
+forge build --root "$PWD"
+forge test --root "$PWD" -vv
 MEME_RPC='http://127.0.0.1:18557'
 test "$(cast chain-id --rpc-url "$MEME_RPC")" = 31337
 
@@ -246,22 +288,36 @@ mkdir -p ../output-tdd/meme-factory-17
 
 第一个账户部署工厂并收平台费，第二个账户发行 Meme，第三个账户付款购买。这里读取的是公开地址。
 
-### 6.3 项目方部署工厂
+### 6.3 项目方先模拟，再通过脚本部署工厂
 
-工厂没有构造参数，会自动创建一次实现合约。`--broadcast` 在这里仅发送到上述本地 Anvil：
+工厂没有构造参数，会自动创建一次实现合约。下面都在 **`meme-factory-17` 项目目录**运行。先对当前 Anvil 状态模拟，不加 `--broadcast`，不会消耗账户 nonce 或写入本地链：
 
 ```bash
-forge create src/MemeFactory.sol:MemeFactory \
-  --rpc-url "$MEME_RPC" --from "$MEME_PLATFORM" \
-  --unlocked --broadcast --json \
-  > ../output-tdd/meme-factory-17/deployment.json
+forge script --root "$PWD" script/DeployMemeFactory.s.sol:DeployMemeFactory \
+  --rpc-url "$MEME_RPC" --sender "$MEME_PLATFORM"
+```
 
-MEME_FACTORY=$(jq -r '.deployedTo' ../output-tdd/meme-factory-17/deployment.json)
+确认模拟成功后，执行下面的实际部署命令。`--unlocked` 让本地 Anvil 使用它自己的模拟账户发送交易，无需输入私钥；`--broadcast` 将交易写入当前本地链：
+
+```bash
+forge script --root "$PWD" script/DeployMemeFactory.s.sol:DeployMemeFactory \
+  --rpc-url "$MEME_RPC" --sender "$MEME_PLATFORM" \
+  --unlocked --broadcast
+
+MEME_BROADCAST='../output-tdd/meme-factory-17/broadcast/DeployMemeFactory.s.sol/31337/run-latest.json'
+MEME_FACTORY=$(jq -er \
+  '.transactions[] | select(.transactionType == "CREATE" and .contractName == "MemeFactory") | .contractAddress' \
+  "$MEME_BROADCAST")
+
+jq '.receipts[] | {transactionHash, status, contractAddress}' "$MEME_BROADCAST"
+cast code "$MEME_FACTORY" --rpc-url "$MEME_RPC"
 cast call "$MEME_FACTORY" 'projectOwner()(address)' --rpc-url "$MEME_RPC"
 cast call "$MEME_FACTORY" 'implementation()(address)' --rpc-url "$MEME_RPC"
 ```
 
-`projectOwner()` 应是 `MEME_PLATFORM`；`implementation()` 是共享模板地址，下一步使用的是工厂创建出的代理地址。
+应看到部署回执 `status = 0x1`，`cast code` 返回非空字节码，`projectOwner()` 等于 `MEME_PLATFORM`。`implementation()` 是工厂自动部署的共享模板地址，下一步使用的是工厂创建出的代理地址。广播记录中的地址来自真正发送的部署交易，不能用 `dry-run/` 下的模拟记录代替。
+
+同一节点上不必重复部署；重复运行实际部署命令会创建新工厂。若部署中断或超时，先查看广播记录并用 `cast receipt` 查询已有交易，确认结果后再决定如何继续。这里的解锁账户方式只用于本地 Anvil；公共链需另外选择自己的钱包并明确授权。
 
 ### 6.4 发行者创建 DOG 并获取真实代理地址
 

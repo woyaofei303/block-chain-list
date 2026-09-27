@@ -88,6 +88,7 @@ forge test --root firstcontract-04
 - 新增 Node.js、前端业务代码和测试统一使用 TypeScript，启用严格类型检查。已有 JavaScript 练习按实际修改范围迁移。
 - 前后端按领域和职责划分模块，复用已有能力，不为形式增加抽象层；前端样式使用 Tailwind CSS。
 - 新建前端接入现有 Husky、lint-staged、Biome 提交检查，使用各项目实际存在的类型检查和测试脚本。
+- 新建 Foundry 项目必须同时提供 `test/` 行为测试与 `script/` 部署脚本；今后新增和维护的部署流程统一使用 `forge script`，不使用 `forge create`，缺少脚本先补齐。项目 README 必须提供从测试、模拟、本地部署到合约调用及结果核验的完整可复制命令。
 
 完整规则以 [AGENTS.md](AGENTS.md) 及目标目录的子级规则为准。
 
