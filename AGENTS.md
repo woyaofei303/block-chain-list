@@ -46,7 +46,7 @@
 14. `cli-wallet-14`：TypeScript / Ethers 命令行钱包。读 [项目规则](cli-wallet-14/AGENTS.md) 与 [README](cli-wallet-14/README.md)。生成加密 keystore、查询余额、构建和签名 ERC20 EIP-1559 交易，显式确认后广播到 Sepolia；默认仅模拟，不输出私钥。
 15. `multisig-wallet-15`：Solidity / Foundry 简单多签钱包。读 [项目规则](multisig-wallet-15/AGENTS.md) 与 [README](multisig-wallet-15/README.md)。部署时固定持有人和门槛，通过交易提交与确认提案，达到门槛后任何人可执行；测试仅使用本地 EVM。
 16. `eip712-permit-16`：EIP-2612 Token、Permit / Permit2 签名存款与 EIP-712 白名单 NFT 全栈练习。读 [项目规则](eip712-permit-16/AGENTS.md)、[README](eip712-permit-16/README.md) 与 [操作指南](eip712-permit-16/WALKTHROUGH.md)。从 13 复用银行与前后端、从 08/11 复用市场与 NFT，现已统一到本目录 `contracts/`、`frontend/`、`backend/`、`database/`；业务源码不跨项目导入，仅共享 09 的第三方库及仓库钩子。新增 Permit2 的独立编译、部署与命令见 [Permit2 指南](eip712-permit-16/PERMIT2.md)。默认仅在本地 EVM / Anvil 验证。
-17. `meme-factory-17`：ERC-1167 最小代理 ERC20 Meme 工厂。读 [项目规则](meme-factory-17/AGENTS.md) 与 [README](meme-factory-17/README.md)。代币使用整数枚（0 位精度），按固定批量铸造，费用即时分给平台 1% 与发行者余款；复用 09 的 OpenZeppelin / forge-std，包含 Forge 测试、测试日志摘要与完整本地 Anvil 操作步骤。
+17. `meme-factory-17`：ERC-1167 最小代理 ERC20 Meme 工厂。读 [项目规则](meme-factory-17/AGENTS.md) 与 [README](meme-factory-17/README.md)。代币使用整数枚（0 位精度），按固定批量铸造，费用即时分给平台 1% 与发行者余款；独立 Foundry 工程，OpenZeppelin / forge-std 固定在本项目 `lib/`，不依赖兄弟项目，包含 Forge 测试、测试日志摘要与完整本地 Anvil 操作步骤。
 
 ## 4. 新建项目的最小交付
 

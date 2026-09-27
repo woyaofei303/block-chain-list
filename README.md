@@ -24,7 +24,7 @@
 | 14 | [cli-wallet-14](cli-wallet-14/README.md) | 命令行钱包：加密私钥、余额、ERC20 EIP-1559 构建、签名与 Sepolia 广播 |
 | 15 | [multisig-wallet-15](multisig-wallet-15/README.md) | 多签合约钱包：固定持有人与门槛、链上提案确认、任何人执行与失败重试 |
 | 16 | [eip712-permit-16](eip712-permit-16/README.md) | 汇总已有银行、市场与 NFT 实现的独立全栈练习：Permit / [Permit2 存款](eip712-permit-16/PERMIT2.md)、白名单购买及[完整命令行流程](eip712-permit-16/WALKTHROUGH.md) |
-| 17 | [meme-factory-17](meme-factory-17/README.md) | 最小代理 ERC20 Meme 工厂：固定批量付费铸造、1% 平台分账、供应上限、Forge 测试与本地操作日志 |
+| 17 | [meme-factory-17](meme-factory-17/README.md) | 独立 Foundry 最小代理 ERC20 Meme 工厂：项目内依赖、固定批量付费铸造、1% 平台分账、供应上限、测试与本地操作日志 |
 
 `tokenbankv2-08` 沿用历史目录名，目前用于 NFTMarket；TokenBank 的前后端已经独立到 `tokenbank-fullstack-13`。
 

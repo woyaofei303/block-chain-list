@@ -71,7 +71,7 @@ price        = 1,000,000,000 wei / 枚（1 gwei / 枚）
 
 - Foundry：需要 `forge`；手动链上演练另需 `anvil`、`cast`。
 - 本次实测 Foundry `1.8.1`，Solidity 固定 `0.8.24`，EVM `shanghai`，优化器 200 runs。
-- 复用仓库已有 `foundry-counter-09/lib/openzeppelin-contracts`（包版本 `5.7.0`）与 `forge-std`（`v1.16.2`）源码。保留整个仓库结构，无需 `forge install`、npm、子模块初始化或新增依赖。
+- 本项目独立管理 `lib/openzeppelin-contracts`（官方 `v5.7.0`）与 `lib/forge-std`（`v1.16.2`），来源提交见下方记录。依赖源码随本项目保存，不引用任何兄弟项目，也不依赖 Git 子模块初始化；克隆后无需额外安装。
 - 手动演练使用 Bash、`jq` 和 Python 3；Python 仅用于准确计算大整数余额差，避免浮点精度损失。
 - 不需要 `.env`、公共 RPC 或钱包私钥。首次编译可能自动下载 Solidity 编译器。
 - 测试中的 `dynamic_test_linking = false` 保留真实 `CREATE`，避免 Foundry 把 `new` 改为 cheatcode 后漏计部署 Gas。
@@ -85,6 +85,45 @@ anvil --version
 jq --version
 python3 --version
 ```
+
+### 项目自己的 Foundry 依赖
+
+```text
+meme-factory-17/
+├── foundry.toml                 编译与项目内依赖映射
+├── lib/
+│   ├── forge-std/               测试库及其许可证
+│   └── openzeppelin-contracts/  合约库及其许可证
+├── src/                        本项目合约
+└── test/                       本项目测试
+```
+
+只复制整个 `meme-factory-17` 目录也能编译和测试，不需要第 09 个项目。依赖是从官方仓库独立安装的固定版本源码，保留原始许可证；继续由外层学习仓库管理版本，不在项目内创建另一套 Git 仓库。
+
+本次安装的版本与官方来源提交如下。`--no-git` 将依赖保存为普通源码目录；此安装模式未生成 `foundry.lock`，版本由以下来源记录和入库的源码快照共同固定。
+
+```text
+forge-std                v1.16.2  bf647bd6046f2f7da30d0c2bf435e5c76a780c1b
+openzeppelin-contracts   v5.7.0   cab19933c33c2ad1d4c7a84864a3601dddfd16f3
+```
+
+仅当项目内依赖目录缺失时，在 **`meme-factory-17` 项目目录**执行下面的恢复命令。显式使用当前目录的绝对路径，避免在外层 Git 仓库中解析错安装位置：
+
+```bash
+forge install --root "$PWD" --no-git --shallow \
+  foundry-rs/forge-std@v1.16.2 \
+  OpenZeppelin/openzeppelin-contracts@v5.7.0
+```
+
+在 **`meme-factory-17` 项目目录**直接验证：
+
+```bash
+forge fmt --root "$PWD" --check
+forge build --root "$PWD"
+forge test --root "$PWD" -vv
+```
+
+编译输入全部位于本项目；临时输出仍遵守学习仓库约定，写到项目旁的 `../output-tdd/meme-factory-17/`，该路径不提供任何编译依赖。
 
 ## 4. 编译、测试与保存日志
 
@@ -166,6 +205,8 @@ Gas 对比使用同一编译设置：代理一侧包含创建、初始化、发�
 测试还验证了完整 45 字节代理代码中的实现地址、多个代币存储隔离、标准 ERC20 转账和授权、整数舍入、免费铸造、无效参数、少付/多付、外来代币、直接铸币权限、拒收 ETH 时全部回滚及恢复后重试。重入测试给攻击合约预先充值，并断言具体的重入错误，确保不是因为攻击账户没钱才失败。
 
 `forge build` 仍输出启发式 lint 警告和风格建议，不是零警告构建。源码涉及外部调用后发事件、向收款地址发送 ETH：初始化目标是工厂固定创建的实现，铸造受重入锁保护，收款目标只来自固定平台地址与创建记录；这些路径已人工核对并通过对应测试。测试文件还会触发循环调用、模拟任意付款和按笔先取整再累加等提示；保留完整构建输出于 `output-tdd/meme-factory-17/forge-build.log`。
+
+同日按独立工程要求，将依赖改为从官方固定版本安装到本项目 `lib/`。原目录重新通过格式检查、构建和 18 项测试；另外只复制本项目到独立验证目录，用全新缓存离线编译、运行全部 18 项测试（含 256 组模糊输入）也通过。核对编译缓存中的 34 个源码输入，全部来自独立副本内部，没有读取兄弟项目的文件。此次日志保存在 `output-tdd/meme-factory-17/independent-test.log`、`standalone-build.log` 和 `standalone-test.log`；构建仍保留前述 lint 提示。
 
 ## 6. 命令行完整演练：部署 → 创建 → 铸造 → 验证分账
 
