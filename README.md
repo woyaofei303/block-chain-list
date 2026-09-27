@@ -2,7 +2,7 @@
 
 区块链学习与全栈实践仓库，记录从 PoW、数字签名、Solidity 合约到事件索引和钱包页面的练习。每个项目保留自己的源码、说明、运行方式和验证入口，方便按顺序复习。
 
-**复习按目录尾部编号 `01 → 16` 进行。** GitHub 按目录名称排列，不代表学习顺序；可以直接使用下面的索引。
+**复习按目录尾部编号 `01 → 17` 进行。** GitHub 按目录名称排列，不代表学习顺序；可以直接使用下面的索引。
 
 ## 项目与复习顺序
 
@@ -24,6 +24,7 @@
 | 14 | [cli-wallet-14](cli-wallet-14/README.md) | 命令行钱包：加密私钥、余额、ERC20 EIP-1559 构建、签名与 Sepolia 广播 |
 | 15 | [multisig-wallet-15](multisig-wallet-15/README.md) | 多签合约钱包：固定持有人与门槛、链上提案确认、任何人执行与失败重试 |
 | 16 | [eip712-permit-16](eip712-permit-16/README.md) | 汇总已有银行、市场与 NFT 实现的独立全栈练习：Permit / [Permit2 存款](eip712-permit-16/PERMIT2.md)、白名单购买及[完整命令行流程](eip712-permit-16/WALKTHROUGH.md) |
+| 17 | [meme-factory-17](meme-factory-17/README.md) | 最小代理 ERC20 Meme 工厂：固定批量付费铸造、1% 平台分账、供应上限、Forge 测试与本地操作日志 |
 
 `tokenbankv2-08` 沿用历史目录名，目前用于 NFTMarket；TokenBank 的前后端已经独立到 `tokenbank-fullstack-13`。
 
