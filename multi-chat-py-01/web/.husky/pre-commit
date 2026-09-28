@@ -22,6 +22,10 @@ if git diff --cached --name-only -- cli-wallet-14/ | grep -q .; then
   npm --prefix cli-wallet-14 run precommit
 fi
 
+if git diff --cached --name-only -- esrnt-storage-18/ | grep -q .; then
+  npm --prefix esrnt-storage-18 run precommit
+fi
+
 if git diff --cached --name-only -- eip712-permit-16/frontend/ | grep -q .; then
   pnpm --dir eip712-permit-16/frontend precommit
 fi

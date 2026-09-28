@@ -19,7 +19,7 @@
 
 - 每个新增的独立学习项目放在仓库根目录，名称使用小写英文、数字和连字符，并在**尾部**附加序号：`<project-name>-<NN>`，例如 `staking-14`。
 - 编号在整个仓库内唯一，按新建顺序递增。创建前同时检查实际一级项目目录与下方项目索引，取已有最大编号再加 1；不能用目录数量加 1，也不能每个主题重新从 `01` 开始。
-- 序号至少两位：`01` 至 `99`，之后继续 `100`。当前最大编号是 `17`，下一个应为 `18`；这是当前状态，未来必须重新计算，不能一直使用 `18`。
+- 序号至少两位：`01` 至 `99`，之后继续 `100`。当前最大编号是 `18`，下一个应为 `19`；这是当前状态，未来必须重新计算，不能一直使用 `19`。
 - 已有项目保持编号。删除或归档项目时保留占号记录，不回收编号、不填补空号、不重新按文件时间排序。修改内容或新增前端不会使旧项目变成新项目。
 - `frontend/`、`backend/`、`src/`、`contracts/`、`test/` 等项目内部目录不单独编号；`.git/`、`.github/`、`.idea/`、`.superpowers/`、`docs-tdd/`、`output-tdd/` 等配置或辅助目录也不编号。
 - 真正创建目录前再次检查编号和目标路径是否被占用；发现重复就重新计算，不覆盖或合并已有目录。默认不新建嵌套 Git 仓库。
@@ -47,6 +47,7 @@
 15. `multisig-wallet-15`：Solidity / Foundry 简单多签钱包。读 [项目规则](multisig-wallet-15/AGENTS.md) 与 [README](multisig-wallet-15/README.md)。部署时固定持有人和门槛，通过交易提交与确认提案，达到门槛后任何人可执行；测试仅使用本地 EVM。
 16. `eip712-permit-16`：EIP-2612 Token、Permit / Permit2 签名存款与 EIP-712 白名单 NFT 全栈练习。读 [项目规则](eip712-permit-16/AGENTS.md)、[README](eip712-permit-16/README.md) 与 [操作指南](eip712-permit-16/WALKTHROUGH.md)。从 13 复用银行与前后端、从 08/11 复用市场与 NFT，现已统一到本目录 `contracts/`、`frontend/`、`backend/`、`database/`；业务源码不跨项目导入，仅共享 09 的第三方库及仓库钩子。新增 Permit2 的独立编译、部署与命令见 [Permit2 指南](eip712-permit-16/PERMIT2.md)。默认仅在本地 EVM / Anvil 验证。
 17. `meme-factory-17`：ERC-1167 最小代理 ERC20 Meme 工厂。读 [项目规则](meme-factory-17/AGENTS.md) 与 [README](meme-factory-17/README.md)。代币使用整数枚（0 位精度），按固定批量铸造，费用即时分给平台 1% 与发行者余款；独立 Foundry 工程，OpenZeppelin / forge-std 固定在本项目 `lib/`，不依赖兄弟项目，包含 Forge 测试、测试日志摘要与完整本地 Anvil 操作步骤。
+18. `esrnt-storage-18`：Viem `getStorageAt` 读取 esRNT 私有结构体数组。读 [项目规则](esrnt-storage-18/AGENTS.md)、[README](esrnt-storage-18/README.md) 和 [运行日志](esrnt-storage-18/RUN_LOG.md)。TypeScript / npm，使用原始存储槽解码地址、uint64 时间与 uint256 金额；Foundry 无第三方库，默认仅在独立 Anvil 本地链验证。
 
 ## 4. 新建项目的最小交付
 

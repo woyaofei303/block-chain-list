@@ -1,0 +1,9 @@
+{
+  "files": {
+    "includes": ["src/**/*.ts", "test/**/*.ts", "*.json", "!package-lock.json"]
+  },
+  "formatter": { "indentStyle": "space", "indentWidth": 2 },
+  "javascript": {
+    "formatter": { "semicolons": "asNeeded", "quoteStyle": "single" }
+  }
+}
