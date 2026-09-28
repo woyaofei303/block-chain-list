@@ -4,6 +4,8 @@
 
 题目：[Decert NFTMarket](https://decert.me/challenge/4df553df-fbab-49c8-a05f-83256432c6af)
 
+Gas 优化练习沿用本项目，报告见 [优化前 gas_report_v1.md](gas_report_v1.md) 与 [优化后 gas_report_v2.md](gas_report_v2.md)。使用冻结的 v1 和当前 v2 运行相同测试场景；普通首次上架实测节省 28.50%，完整报价范围、公开接口和事件保持兼容。部署与大额报价的成本变化也在 v2 报告列出。
+
 ## 题目功能
 
 - `list(tokenId, price)`：NFT 持有人授权市场后设置 BERC20 价格并上架。
@@ -25,7 +27,10 @@ tokenbankv2-08/
 ├── backend/
 │   └── listen-events.mjs
 ├── test/
-│   └── NFTMarket.t.sol
+│   ├── NFTMarket.t.sol
+│   └── fixtures/NFTMarketV1.sol
+├── gas_report_v1.md
+├── gas_report_v2.md
 ├── foundry.toml
 ├── package.json
 ├── package-lock.json
@@ -204,7 +209,25 @@ forge build --sizes
 forge test -vv
 ```
 
-期望结果是编译成功，测试显示 `11 passed, 0 failed`。任何一步失败都不要继续主网广播。
+2026-09-28 本地实测为 `55 passed, 0 failed`，包含原有行为、边界、回滚、重入及 Gas 回归测试。任何一步失败都不要继续主网广播。
+
+### 3.1 对比优化前后的 Gas
+
+在 `tokenbankv2-08/` 内执行，两版使用相同的六个 Gas 场景：
+
+```bash
+forge test --match-contract '^NFTMarketV1Test$' --match-test '^testGas' \
+  --gas-report --isolate --no-dynamic-test-linking --evm-version cancun -vv
+
+forge test --match-contract '^NFTMarketV2Test$' --match-test '^testGas' \
+  --gas-report --isolate --no-dynamic-test-linking --evm-version cancun -vv
+
+forge test --fuzz-seed 0x712 --isolate --no-dynamic-test-linking --evm-version cancun
+```
+
+v1 基线保存在 `test/fixtures/NFTMarketV1.sol`，仅用于测试；原部署脚本继续部署 `src/NFTMarket.sol`。先读两份报告的统计口径和取舍，再按 `NFTMarketV1.sol → src/NFTMarket.sol → test/NFTMarket.t.sol` 比较源码。新的存储布局只适用于新部署，历史链上合约不会自动改变。
+
+报告按本次提供的 Gas 优化题面整理；题面中的[先前 NFTMarket 链接](https://decert.me/challenge/abdbc346-8314-4394-8f97-8732780602ed)在本环境未能读取正文，基线以仓库已有实现为准。
 
 ## 4. 模拟并部署 BERC20 与 NFTMarket
 

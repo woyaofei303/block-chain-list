@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {ITokenReceiverWithData} from "./ERC20WithCallback.sol";
+import {ITokenReceiverWithData} from "../../src/ERC20WithCallback.sol";
 
 interface IERC20MarketToken {
     /// @notice 将调用者的代币支付给 to，amount 为最小单位；返回是否成功。
@@ -25,20 +25,17 @@ interface IERC721MarketNFT {
 /// @dev 完整闭环：卖家授权并上架 → 写入挂单并发出 NFTListed → 买家通过 buyNFT 或 Token 回调付款
 ///      → 清除挂单、结算 ERC20、转移 NFT 并发出 NFTSold → 链下监听器读取事件并打印交易记录。
 ///      结算中的任一步失败都会回滚挂单、Token、NFT 和事件，链上不会留下半完成状态。
-contract NFTMarket is ITokenReceiverWithData {
+/// @dev 冻结优化前行为，仅作为 Gas 对照；不用于部署，禁止跟随 v2 优化。
+contract NFTMarketV1 is ITokenReceiverWithData {
     struct Listing {
         address seller;
-        uint96 compactPrice;
+        uint256 price;
     }
-
-    // uint96 最大值作为扩展价格标记；其余正数与 seller 共占一个槽位。
-    uint256 private constant EXTENDED_PRICE = type(uint96).max;
 
     IERC20MarketToken public immutable paymentToken;
     IERC721MarketNFT public immutable nft;
-    // 常见报价只写一个槽位；超大报价走扩展槽位，避免缩窄原 uint256 价格范围。
-    mapping(uint256 tokenId => Listing) private _listings;
-    mapping(uint256 tokenId => uint256) private _extendedPrices;
+    // 每个 tokenId 最多保存一条挂单；seller 为零地址表示未上架。
+    mapping(uint256 tokenId => Listing) public listings;
 
     /// @notice NFT 上架成功后发出，供链下服务记录卖家和报价。
     event NFTListed(address indexed seller, uint256 indexed tokenId, uint256 price);
@@ -54,18 +51,6 @@ contract NFTMarket is ITokenReceiverWithData {
         nft = IERC721MarketNFT(nftAddress);
     }
 
-    /// @notice 保持原 getter 的完整 uint256 报价；未上架或已成交时返回 (address(0), 0)。
-    /// @dev seller 和 compactPrice 共用一槽；只有标记为扩展价格时才读取第二槽。
-    /// @param tokenId 指定集合中的 NFT 编号。
-    /// @return seller 当前挂单卖家。
-    /// @return price 支付代币最小单位的报价，零表示未上架。
-    function listings(uint256 tokenId) public view returns (address seller, uint256 price) {
-        Listing storage listing = _listings[tokenId];
-        seller = listing.seller;
-        price = listing.compactPrice;
-        if (price == EXTENDED_PRICE) price = _extendedPrices[tokenId];
-    }
-
     /// @notice NFT 持有人在授权市场后设置非零价格；重复调用更新挂单。
     /// @param tokenId 指定集合中的 NFT 编号。
     /// @param price 支付代币最小单位的报价，完整支持 uint256。
@@ -76,28 +61,20 @@ contract NFTMarket is ITokenReceiverWithData {
             nft.getApproved(tokenId) == address(this) || nft.isApprovedForAll(msg.sender, address(this)),
             "Market not approved"
         );
-        // 先保留大额原值再写压缩挂单；向 uint96 转换前已确保不会丢失高位。
-        uint96 compactPrice;
-        if (price >= EXTENDED_PRICE) {
-            _extendedPrices[tokenId] = price;
-            compactPrice = uint96(EXTENDED_PRICE);
-        } else {
-            if (_listings[tokenId].compactPrice == EXTENDED_PRICE) {
-                // 从大额改回普通价格时清理扩展槽，避免遗留无用状态。
-                delete _extendedPrices[tokenId];
-            }
-            compactPrice = uint96(price);
-        }
-        _listings[tokenId] = Listing({seller: msg.sender, compactPrice: compactPrice});
+        listings[tokenId] = Listing({seller: msg.sender, price: price});
         emit NFTListed(msg.sender, tokenId, price);
     }
 
     /// @notice 从买家扣款并转移已上架 NFT；授权、余额或 NFT 转移失败时整体回滚。
     function buyNFT(uint256 tokenId) external {
-        (address seller, uint256 price) = _takeListing(tokenId);
-        emit NFTSold(seller, msg.sender, tokenId, price);
-        require(paymentToken.transferFrom(msg.sender, seller, price), "Token transfer failed");
-        nft.transferFrom(seller, msg.sender, tokenId);
+        Listing memory listing = listings[tokenId];
+        require(listing.seller != address(0), "NFT not listed");
+
+        // 先清除挂单，阻止外部转账期间重复购买；后续失败时整笔交易会自动回滚。
+        delete listings[tokenId];
+        emit NFTSold(listing.seller, msg.sender, tokenId, listing.price);
+        require(paymentToken.transferFrom(msg.sender, listing.seller, listing.price), "Token transfer failed");
+        nft.transferFrom(listing.seller, msg.sender, tokenId);
     }
 
     /// @notice 仅绑定的代币可回调；data 必须编码一个 tokenId，amount 必须等于报价。
@@ -109,24 +86,15 @@ contract NFTMarket is ITokenReceiverWithData {
         require(data.length == 32, "Invalid callback data");
         // transferWithCallback 的 data 约定编码为 abi.encode(tokenId)。
         uint256 tokenId = abi.decode(data, (uint256));
-        (address seller, uint256 price) = _takeListing(tokenId);
-        require(amount == price, "Incorrect payment amount");
+        Listing memory listing = listings[tokenId];
+        require(listing.seller != address(0), "NFT not listed");
+        require(amount == listing.price, "Incorrect payment amount");
 
         // Token 已由回调转入市场，此处转给卖家并把 NFT 交给原付款人 from。
-        emit NFTSold(seller, from, tokenId, price);
-        require(paymentToken.transfer(seller, price), "Token transfer failed");
-        nft.transferFrom(seller, from, tokenId);
+        delete listings[tokenId];
+        emit NFTSold(listing.seller, from, tokenId, listing.price);
+        require(paymentToken.transfer(listing.seller, listing.price), "Token transfer failed");
+        nft.transferFrom(listing.seller, from, tokenId);
         return true;
-    }
-
-    /// @notice 读取并清空挂单供两个购买入口结算；未上架时回滚。
-    /// @dev 先删状态再外部转账，同一挂单无法重入购买；后续失败会恢复全部槽位。
-    /// @return seller 缓存在栈上的卖家地址。
-    /// @return price 未截断的原报价。
-    function _takeListing(uint256 tokenId) private returns (address seller, uint256 price) {
-        (seller, price) = listings(tokenId);
-        require(seller != address(0), "NFT not listed");
-        delete _listings[tokenId];
-        if (price >= EXTENDED_PRICE) delete _extendedPrices[tokenId];
     }
 }

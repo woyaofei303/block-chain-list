@@ -2,6 +2,7 @@
 
 import Image from "next/image"
 import { useId, useRef, useState } from "react"
+import { sepolia } from "viem/chains"
 import { useConnect, useConnection, useConnectors, useDisconnect } from "wagmi"
 import { targetChain } from "@/domains/wallet/config"
 import { errorMessage, shortAddress } from "@/shared/web3"
