@@ -7,28 +7,24 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {Multicall} from "@openzeppelin/contracts/utils/Multicall.sol";
-import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+/// @dev 冻结自提交 d4767afd，仅用于优化前行为与 Gas 对比，不用于部署。
 /// @notice 非托管 NFT 挂单市场：白名单买家用 Permit 授权，以五折支付 Token。
 /// @dev 保留题面的 Airdop 拼写。继承的 multicall 对 address(this) 逐个 delegatecall，
 ///      保留原 msg.sender；子调用错误原样冒泡，整笔交易包括 Permit nonce 一起回滚。
-///      重入锁使用 EIP-1153 瞬态存储，需 Cancun 支持；每个子调用结束即解锁，允许顺序批量执行。
-contract AirdopMerkleNFTMarket is Multicall, ReentrancyGuardTransient {
+contract AirdopMerkleNFTMarketV1 is Multicall, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     struct Listing {
         address seller;
-        uint96 compactPrice;
+        uint256 price;
     }
-
-    // 复用第 08 题的布局：常见正数报价与 seller 共用一槽，最大 uint96 作为扩展价格标记。
-    uint256 private constant EXTENDED_PRICE = type(uint96).max;
 
     IERC20 public immutable paymentToken;
     IERC721 public immutable nft;
     bytes32 public immutable merkleRoot;
-    mapping(uint256 tokenId => Listing) private _listings;
-    mapping(uint256 tokenId => uint256) private _extendedPrices;
+    mapping(uint256 tokenId => Listing) public listings;
 
     event NFTListed(address indexed seller, uint256 indexed tokenId, uint256 price);
     event NFTSold(address indexed seller, address indexed buyer, uint256 indexed tokenId, uint256 paid);
@@ -43,15 +39,6 @@ contract AirdopMerkleNFTMarket is Multicall, ReentrancyGuardTransient {
         merkleRoot = root;
     }
 
-    /// @notice 保持原公开 getter：返回卖家及完整 uint256 报价，未上架时为 (address(0), 0)。
-    /// @dev 只有扩展标记才读取第二槽；调用方无需了解内部压缩布局。
-    function listings(uint256 tokenId) public view returns (address seller, uint256 price) {
-        Listing storage listing = _listings[tokenId];
-        seller = listing.seller;
-        price = listing.compactPrice;
-        if (price == EXTENDED_PRICE) price = _extendedPrices[tokenId];
-    }
-
     /// @notice 持有人先 approve 或 setApprovalForAll，再按最小单位的正数原价上架/改价。
     /// @dev 上架不转移 NFT；成交时仍需有效所有权及授权。重入锁防止接收回调中改写挂单。
     function list(uint256 tokenId, uint256 price) external nonReentrant {
@@ -61,16 +48,7 @@ contract AirdopMerkleNFTMarket is Multicall, ReentrancyGuardTransient {
             nft.getApproved(tokenId) == address(this) || nft.isApprovedForAll(msg.sender, address(this)),
             "Market not approved"
         );
-        uint96 compactPrice;
-        if (price >= EXTENDED_PRICE) {
-            // 完整报价先写扩展槽，避免向 uint96 转换时截断；标记本身也走此分支。
-            _extendedPrices[tokenId] = price;
-            compactPrice = uint96(EXTENDED_PRICE);
-        } else {
-            if (_listings[tokenId].compactPrice == EXTENDED_PRICE) delete _extendedPrices[tokenId];
-            compactPrice = uint96(price);
-        }
-        _listings[tokenId] = Listing(msg.sender, compactPrice);
+        listings[tokenId] = Listing(msg.sender, price);
         emit NFTListed(msg.sender, tokenId, price);
     }
 
@@ -93,17 +71,16 @@ contract AirdopMerkleNFTMarket is Multicall, ReentrancyGuardTransient {
     /// @param proof 调用者的 Merkle 证明；白名单可购买多件，无每地址一次限购。
     function claimNFT(uint256 tokenId, uint256 maxPayment, bytes32[] calldata proof) external nonReentrant {
         require(isWhitelisted(msg.sender, proof), "Not whitelisted");
-        (address seller, uint256 price) = listings(tokenId);
-        require(seller != address(0), "NFT not listed");
+        Listing memory listing = listings[tokenId];
+        require(listing.seller != address(0), "NFT not listed");
         // 避免 price+1 溢出；奇数最小单位向上取整，原价 1 不会变为免费。
-        uint256 paid = price / 2 + price % 2;
+        uint256 paid = listing.price / 2 + listing.price % 2;
         require(paid <= maxPayment, "Price exceeds maximum");
 
         // 先清挂单再外部调用；转币或接收 NFT 失败会恢复挂单、余额、额度及外层 Permit。
-        delete _listings[tokenId];
-        if (price >= EXTENDED_PRICE) delete _extendedPrices[tokenId];
-        paymentToken.safeTransferFrom(msg.sender, seller, paid);
-        nft.safeTransferFrom(seller, msg.sender, tokenId);
-        emit NFTSold(seller, msg.sender, tokenId, paid);
+        delete listings[tokenId];
+        paymentToken.safeTransferFrom(msg.sender, listing.seller, paid);
+        nft.safeTransferFrom(listing.seller, msg.sender, tokenId);
+        emit NFTSold(listing.seller, msg.sender, tokenId, paid);
     }
 }

@@ -56,10 +56,10 @@ keccak256(bytes.concat(keccak256(abi.encode(account))))
 - 单地址树的 root 等于该地址叶子，proof 为空。拒绝空白名单、重复地址、零地址和无效地址。
 - 可由 OpenZeppelin `MerkleProof.verifyCalldata` 验证；这是本项目的树布局与 JSON 格式，不声称与 `StandardMerkleTree` 的树布局或 dump 格式相同。
 - Token、NFT 和 root 在部署后固定；白名单只有地址资格，不限定每人只能买一次。
-- 挂单价格保持完整 `uint256`。五折支付 `price / 2 + price % 2`，奇数最小单位向上取整；原价 1 不会免费，最大整数不会溢出。
+- 普通挂单以 `address + uint96` 压入一槽；`uint96` 最大值作为扩展标记，大额报价保存在第二映射中。公开 getter、事件与挂单价格保持完整 `uint256`。五折支付 `price / 2 + price % 2`，奇数最小单位向上取整；原价 1 不会免费，最大整数不会溢出。
 - `claimNFT(tokenId, maxPayment, proof)` 的最高实付额防止签名后提价；封装将它设为本次 Permit 金额。
 - 只提供白名单购买入口，不增加全价购买、费用抽成、可更新根或前端页面。卖家可更新报价，或撤销 NFT 授权使挂单暂时无法成交；本练习没有独立撤单接口。
-- `safeTransferFrom` 保证合约接收者能接收 NFT；购买、上架和 Permit 入口有重入锁。最外层 multicall 不加同一把锁，否则会阻塞内部受保护的顺序调用。
+- `safeTransferFrom` 保证合约接收者能接收 NFT；购买、上架和 Permit 入口使用 OpenZeppelin 瞬态存储重入锁，运行网络必须支持 **EIP-1153 / Cancun**。最外层 multicall 不加同一把锁，否则会阻塞内部受保护的顺序调用。
 
 EIP-2612 Permit 可被任何人提前提交给 Token。这里严格执行 Permit，重复签名会失败；若已提前提交，买家确认 `allowance >= 实付金额` 后可直接调用 `claimNFT`，或读取新 nonce 重新签名。测试包含前一种恢复路径。标准 ERC20Permit 使用 EOA 签名；合约钱包可用普通 approve 后调用 claim，本项目不扩展 ERC-1271 Permit。
 
@@ -179,8 +179,17 @@ cast nonce "$BUYER" --rpc-url "$RPC_URL"
 
 ## 验证记录与范围
 
-2026-09-29，本机 Node 24.14.0 / Foundry 1.8.1 / Solidity 0.8.24 / Anvil 31337：已运行部署模拟、本地广播及 TypeScript 完整购买；买家确实只发出一笔交易，100 MMT 挂单以 50 MMT 成交。这里的地址、交易哈希与余额仅是本地模拟环境，不是公共链记录。
+初版（`d4767afd`）于 2026-09-29，本机 Node 24.14.0 / Foundry 1.8.1 / Solidity 0.8.24 / Anvil 31337：已运行部署模拟、本地广播及 TypeScript 完整购买；买家确实只发出一笔交易，100 MMT 挂单以 50 MMT 成交。这里的地址、交易哈希与余额仅是本地模拟环境，不是公共链记录。
 
 合约测试覆盖上架权限与授权、白名单与无效 proof、Permit 身份/金额/域/过期/重放、提前提交后的 claim 恢复、改价上限、额度/余额不足、撤销 NFT 授权、陈旧挂单、重复购买整批回滚、奇数和最大报价、接收回调重入及拒收回滚；另有 256 轮价格 fuzz。本次实测 23 项 Forge 测试、2 项 Node 测试及 1 项 Anvil 集成测试全部通过；Biome、严格类型检查、Forge 格式/构建与共享 pre-commit 通过。Forge 构建仍输出风格建议及测试代码的 lint 提示，不影响编译和行为测试。共享钩子使用临时 Git index 实测，真实暂存区保持不变。
 
 本地验证不包含公共链部署或课程答案提交。GitHub 提交作业应指向实际推送后的本项目目录或具体提交；本地文件存在不代表远程已经更新。
+
+
+## Gas 优化
+
+优化结果、成本取舍和复现命令见 [GAS_REPORT.md](GAS_REPORT.md)：普通首次上架降低 30.10%，Permit + multicall 购买降低 6.90%，部署增加 1.37%（同场景 Foundry 读数）。复用 OpenZeppelin 瞬态锁与第 08 题的单槽挂单方案；Token、NFT、白名单哈希、Permit、multicall、公开函数/事件及回滚消息保持不变。源码不跨项目引用业务实现。
+
+[冻结 v1](test/fixtures/AirdopMerkleNFTMarketV1.sol) 与当前合约共享行为和 Gas 场景。此改动改变内部存储布局，适用于新部署，不能直接替换旧部署的字节码或当作代理升级。已有地址也不会因本地修改自动省 Gas。
+
+优化版本已通过 31 项当前实现测试、30 项基线测试、2 项 Node 测试和 1 项 Anvil 集成；完整 ABI 前后相等。

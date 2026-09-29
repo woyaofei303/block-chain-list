@@ -4,6 +4,7 @@
 
 - Solidity 0.8.24 / Cancun / Foundry；只共享 `../foundry-counter-09/lib` 的 OpenZeppelin 与 forge-std，不跨项目导入业务源码。
 - Node.js 24+ / TypeScript strict / npm / Viem；`src/*.ts` 提供 Merkle 树与 multicall 编码，`script/demo.ts` 运行本地购买，`test/` 保存 Forge 和 Node 测试。
+- 市场使用 OpenZeppelin ReentrancyGuardTransient，运行网络必须支持 EIP-1153 / Cancun；普通挂单压为单槽，大额价格走扩展槽，保持完整 uint256。冻结 v1 仅在 `test/fixtures/` 做行为与 Gas 对比，不用于生产部署。
 - 合约名保留题面拼写 `AirdopMerkleNFTMarket`；固定 Token、NFT 与 Merkle root，非托管挂单，白名单按地址验证。五折按最小单位向上取整，不增加每地址限购。
 - Permit 的 owner 必须为调用者、spender 固定为市场；multicall 复用 OpenZeppelin 的自身 delegatecall，任一步失败整体回滚。仅支持本项目无手续费、无 rebase 的 Token。
 - 每个自有函数及关键逻辑写中文学习注释。运行 `npm run check`、`npm run test:integration`，部署仅通过 `forge script script/Deploy.s.sol:Deploy`。

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 import {AirdopMerkleNFTMarket} from "../src/AirdopMerkleNFTMarket.sol";
 import {PermitToken} from "../src/PermitToken.sol";
 import {MarketNFT} from "../src/MarketNFT.sol";
+import {AirdopMerkleNFTMarketV1} from "./fixtures/AirdopMerkleNFTMarketV1.sol";
 
-contract AirdopMerkleNFTMarketTest is Test {
+abstract contract AirdopMerkleNFTMarketTestBase is Test {
     PermitToken internal token;
     MarketNFT internal nft;
     AirdopMerkleNFTMarket internal market;
@@ -26,7 +27,7 @@ contract AirdopMerkleNFTMarketTest is Test {
         bytes32 root = buyerLeaf < otherLeaf
             ? keccak256(abi.encodePacked(buyerLeaf, otherLeaf))
             : keccak256(abi.encodePacked(otherLeaf, buyerLeaf));
-        market = new AirdopMerkleNFTMarket(address(token), address(nft), root);
+        market = _deployMarket(address(token), address(nft), root);
         token.transfer(buyer, 1_000 ether);
         nft.mint(seller);
         vm.startPrank(seller);
@@ -290,11 +291,11 @@ contract AirdopMerkleNFTMarketTest is Test {
     function testConstructorRejectsInvalidConfiguration() public {
         bytes32 root = market.merkleRoot();
         vm.expectRevert("Invalid payment token");
-        new AirdopMerkleNFTMarket(address(0), address(nft), root);
+        _deployMarket(address(0), address(nft), root);
         vm.expectRevert("Invalid NFT");
-        new AirdopMerkleNFTMarket(address(token), address(0), root);
+        _deployMarket(address(token), address(0), root);
         vm.expectRevert("Empty root");
-        new AirdopMerkleNFTMarket(address(token), address(nft), bytes32(0));
+        _deployMarket(address(token), address(nft), bytes32(0));
     }
 
     /// @notice NFT 接收回调中通过 multicall 重入 claim 也受锁保护，外层购买只付款一次。
@@ -322,12 +323,58 @@ contract AirdopMerkleNFTMarketTest is Test {
     function _receiverMarket() internal returns (BuyerReceiver receiver) {
         receiver = new BuyerReceiver();
         bytes32 root = keccak256(bytes.concat(keccak256(abi.encode(address(receiver)))));
-        market = new AirdopMerkleNFTMarket(address(token), address(nft), root);
+        market = _deployMarket(address(token), address(nft), root);
         token.transfer(address(receiver), 100 ether);
         vm.startPrank(seller);
         nft.approve(address(market), 0);
         market.list(0, 100 ether);
         vm.stopPrank();
+    }
+
+    /// @notice 报价跨越 uint96 标记、最大 uint256 再改回普通值时，公开 getter 不丢失任何位。
+    function testFullPriceRangeAndTransitions() public {
+        uint256[5] memory prices = [
+            uint256(type(uint96).max) - 1,
+            uint256(type(uint96).max),
+            type(uint256).max,
+            uint256(100 ether),
+            uint256(type(uint96).max) + 1
+        ];
+        vm.startPrank(seller);
+        for (uint256 i = 0; i < prices.length; i++) {
+            market.list(0, prices[i]);
+            (address listedSeller, uint256 price) = market.listings(0);
+            assertEq(listedSeller, seller);
+            assertEq(price, prices[i]);
+        }
+        // 最终改回普通价并成交，不能读取到旧扩展报价或留下成交后的挂单。
+        market.list(0, 100 ether);
+        vm.stopPrank();
+        bytes[] memory calls = _calls(50 ether, block.timestamp + 1 hours, _proof());
+        vm.prank(buyer);
+        market.multicall(calls);
+        (address emptySeller, uint256 emptyPrice) = market.listings(0);
+        assertEq(emptySeller, address(0));
+        assertEq(emptyPrice, 0);
+        assertEq(token.balanceOf(seller), 50 ether);
+    }
+
+    /// @notice 任意扩展报价也按完整金额成交；测试余额由 VM 注入，不代表 Token 增发或真实资金。
+    function testFuzzExtendedPricePurchase(uint256 rawPrice) public {
+        uint256 price = bound(rawPrice, uint256(type(uint96).max), type(uint256).max);
+        uint256 paid = price / 2 + price % 2;
+        deal(address(token), buyer, paid);
+        vm.prank(seller);
+        market.list(0, price);
+        bytes[] memory calls = _calls(paid, block.timestamp + 1 hours, _proof());
+        vm.prank(buyer);
+        market.multicall(calls);
+        assertEq(token.balanceOf(buyer), 0);
+        assertEq(token.balanceOf(seller), paid);
+        assertEq(nft.ownerOf(0), buyer);
+        (address emptySeller, uint256 emptyPrice) = market.listings(0);
+        assertEq(emptySeller, address(0));
+        assertEq(emptyPrice, 0);
     }
 
     /// @notice 对失败交易统一核验资金、所有权、挂单、Permit nonce 和额度全部未变。
@@ -349,6 +396,76 @@ contract AirdopMerkleNFTMarketTest is Test {
             args[i] = data[i + 4];
         }
     }
+
+    /// @notice 两版以完全相同的首次上架与更新报价场景采样，准备及断言不计入业务 Gas。
+    function testGasListing() public {
+        nft.mint(seller);
+        vm.startPrank(seller);
+        nft.approve(address(market), 1);
+        market.list(1, 100 ether);
+        _recordGas("list.first");
+        market.list(1, 200 ether);
+        _recordGas("list.update");
+        vm.stopPrank();
+        (, uint256 price) = market.listings(1);
+        assertEq(price, 200 ether);
+    }
+
+    /// @notice 单独记录大额首次上架和大额改回普通价，避免报告只展示压缩路径的收益。
+    function testGasExtendedListing() public {
+        nft.mint(seller);
+        vm.startPrank(seller);
+        nft.approve(address(market), 1);
+        market.list(1, type(uint256).max);
+        _recordGas("list.extended");
+        market.list(1, 100 ether);
+        _recordGas("list.extendedToSmall");
+        vm.stopPrank();
+        (, uint256 price) = market.listings(1);
+        assertEq(price, 100 ether);
+    }
+
+    /// @notice 测量双叶白名单、首次 Permit 及五折购买的完整 multicall，保留 nonce/余额断言。
+    function testGasMulticall() public {
+        bytes[] memory calls = _calls(50 ether, block.timestamp + 1 hours, _proof());
+        vm.prank(buyer);
+        market.multicall(calls);
+        _recordGas("buy.multicall");
+        assertEq(token.nonces(buyer), 1);
+        assertEq(token.balanceOf(seller), 50 ether);
+        assertEq(nft.ownerOf(0), buyer);
+    }
+
+    /// @notice 测量已存在授权时的单独 claim；授权交易不算入本项购买 Gas。
+    function testGasClaimWithAllowance() public {
+        vm.startPrank(buyer);
+        token.approve(address(market), 50 ether);
+        market.claimNFT(0, 50 ether, _proof());
+        _recordGas("buy.claim");
+        vm.stopPrank();
+        assertEq(token.allowance(buyer, address(market)), 0);
+        assertEq(nft.ownerOf(0), buyer);
+    }
+
+    /// @notice 单独测量市场部署；Token/NFT 已就绪，禁用动态测试链接后才代表真实部署开销。
+    function testGasDeployment() public {
+        AirdopMerkleNFTMarket deployed = _deployMarket(address(token), address(nft), market.merkleRoot());
+        _recordGas("deploy.market");
+        assertEq(address(deployed.paymentToken()), address(token));
+    }
+
+    /// @notice 记录 Foundry 原始调用 Gas 与退款，不能把整条测试 Gas 或重复扣减退款当作收益。
+    function _recordGas(string memory label) private {
+        Vm.Gas memory usage = vm.lastFrameGas();
+        emit log_named_uint(label, usage.gasTotalUsed);
+        emit log_named_int(string.concat(label, ".refund"), usage.gasRefunded);
+    }
+
+    /// @notice 两个子类仅替换部署版本，业务、权限、回滚、回调和 Gas 场景完全共享。
+    function _deployMarket(address tokenAddress, address nftAddress, bytes32 root)
+        internal
+        virtual
+        returns (AirdopMerkleNFTMarket);
 
     /// @notice 构造买家的证明；另一白名单成员的叶子即两叶树的唯一兄弟节点。
     function _proof() internal view returns (bytes32[] memory proof) {
@@ -378,6 +495,53 @@ contract AirdopMerkleNFTMarketTest is Test {
         calls = new bytes[](2);
         calls[0] = abi.encodeCall(market.permitPrePay, (value, deadline, v, r, s));
         calls[1] = abi.encodeCall(market.claimNFT, (0, value, proof));
+    }
+}
+
+/// @notice 当前实现运行共同测试，并要求真实测得的 Gas 改善。
+contract AirdopMerkleNFTMarketTest is AirdopMerkleNFTMarketTestBase {
+    /// @notice 部署当前生产实现，公开 ABI 与冻结 v1 一致。
+    function _deployMarket(address tokenAddress, address nftAddress, bytes32 root)
+        internal
+        override
+        returns (AirdopMerkleNFTMarket)
+    {
+        return new AirdopMerkleNFTMarket(tokenAddress, nftAddress, root);
+    }
+
+    /// @notice 相同 NFT、报价及冷槽条件下，普通首次上架至少省 20% Gas，防止退回双槽挂单。
+    /// @dev 只取业务外部调用的 gasTotalUsed，不把部署、签名或断言计算进收益。
+    function testListingGasImprovement() public {
+        AirdopMerkleNFTMarketV1 beforeMarket =
+            new AirdopMerkleNFTMarketV1(address(token), address(nft), market.merkleRoot());
+        nft.mint(seller);
+        vm.startPrank(seller);
+        nft.setApprovalForAll(address(beforeMarket), true);
+        nft.setApprovalForAll(address(market), true);
+        vm.cool(address(nft));
+        vm.cool(address(beforeMarket));
+        beforeMarket.list(1, 100 ether);
+        uint256 beforeGas = vm.lastFrameGas().gasTotalUsed;
+        vm.cool(address(nft));
+        vm.cool(address(market));
+        market.list(1, 100 ether);
+        uint256 afterGas = vm.lastFrameGas().gasTotalUsed;
+        vm.stopPrank();
+        emit log_named_uint("list.before", beforeGas);
+        emit log_named_uint("list.after", afterGas);
+        assertLt(afterGas * 100, beforeGas * 80);
+    }
+}
+
+/// @notice 冻结 v1 运行同一批行为与 Gas 测试，保证前后对比没有换题目或场景。
+contract AirdopMerkleNFTMarketV1Test is AirdopMerkleNFTMarketTestBase {
+    /// @notice 仅将 ABI 相同的基线地址作为市场接口使用，不共享或假定内部存储布局。
+    function _deployMarket(address tokenAddress, address nftAddress, bytes32 root)
+        internal
+        override
+        returns (AirdopMerkleNFTMarket)
+    {
+        return AirdopMerkleNFTMarket(address(new AirdopMerkleNFTMarketV1(tokenAddress, nftAddress, root)));
     }
 }
 
