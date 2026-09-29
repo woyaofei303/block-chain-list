@@ -39,3 +39,7 @@ if git diff --cached --name-only -- eip712-permit-16/contracts/ | grep -q .; the
   forge fmt --root eip712-permit-16/contracts --check
   forge test --root eip712-permit-16/contracts
 fi
+
+if git diff --cached --name-only -- merkle-nft-market-20/ | grep -q .; then
+  npm --prefix merkle-nft-market-20 run precommit
+fi

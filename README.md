@@ -2,7 +2,7 @@
 
 区块链学习与全栈实践仓库，记录从 PoW、数字签名、Solidity 合约到事件索引和钱包页面的练习。每个项目保留自己的源码、说明、运行方式和验证入口，方便按顺序复习。
 
-**复习按目录尾部编号 `01 → 19` 进行。** GitHub 按目录名称排列，不代表学习顺序；可以直接使用下面的索引。
+**复习按目录尾部编号 `01 → 20` 进行。** GitHub 按目录名称排列，不代表学习顺序；可以直接使用下面的索引。
 
 ## 项目与复习顺序
 
@@ -27,6 +27,7 @@
 | 17 | [meme-factory-17](meme-factory-17/README.md) | 独立 Foundry 最小代理 ERC20 Meme 工厂：项目内依赖、固定批量付费铸造、1% 平台分账、供应上限、测试与本地操作日志 |
 | 18 | [esrnt-storage-18](esrnt-storage-18/README.md) | Viem 读取私有结构体数组：动态数组槽定位、紧凑字段解码、完整 11 项输出与[本地运行日志](esrnt-storage-18/RUN_LOG.md) |
 | 19 | [linked-list-bank-19](linked-list-bank-19/README.md) | ETH Bank：可迭代单链表前 10 名、累计存款、淘汰再入榜、管理员提款、Foundry 测试与本地部署 |
+| 20 | [merkle-nft-market-20](merkle-nft-market-20/README.md) | Merkle 白名单五折 NFT 购买、Permit 授权、delegatecall Multicall、TypeScript 树与交易封装、Foundry / Anvil 测试 |
 
 `tokenbankv2-08` 沿用历史目录名，目前用于 NFTMarket；TokenBank 的前后端已经独立到 `tokenbank-fullstack-13`。
 
