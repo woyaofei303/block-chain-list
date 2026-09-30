@@ -192,4 +192,24 @@ cast nonce "$BUYER" --rpc-url "$RPC_URL"
 
 [冻结 v1](test/fixtures/AirdopMerkleNFTMarketV1.sol) 与当前合约共享行为和 Gas 场景。此改动改变内部存储布局，适用于新部署，不能直接替换旧部署的字节码或当作代理升级。已有地址也不会因本地修改自动省 Gas。
 
-优化版本已通过 31 项当前实现测试、30 项基线测试、2 项 Node 测试和 1 项 Anvil 集成；完整 ABI 前后相等。
+合约保留已提交的第一轮版本，ABI 不变；客户端调整后的验证记录见 Gas 报告。
+
+### 不增加部署成本的客户端优化
+
+第二轮评估后已还原新增批量合约入口及独立签名挂单合约。当前只保留 `preparePurchase()`：额度足够时跳过 Permit，多件商品用已有 `multicall` 执行一次总预算 Permit 和多次 `claimNFT`，**无需重新部署合约**。这不会把 proof 验证搬到链下，链上仍逐件校验并原子结算。
+
+```ts
+import { preparePurchase } from './src/client.ts'
+
+const call = await preparePurchase({
+  publicClient, wallet, buyer, market, proof,
+  items: [
+    { tokenId: 1n, maxPayment: 50n * 10n ** 18n },
+    { tokenId: 2n, maxPayment: 50n * 10n ** 18n },
+  ],
+})
+// 封装只读取、签名和模拟；由调用方明确发送并等待回执。
+const hash = await wallet.sendTransaction({ account: buyer, ...call })
+```
+
+金额使用最小单位 bigint，拒绝空购物车、重复编号和预算溢出。已有额度必须本来就存在；为本次购买先单独 approve 再购买通常更贵，因此不自动扩大或创建额度。保留原 `encodePermitClaim()` 供题目两步调用使用。当前成本、还原依据和实测见 [划算性复核](GAS_REPORT.md#第二轮划算性复核与还原)。

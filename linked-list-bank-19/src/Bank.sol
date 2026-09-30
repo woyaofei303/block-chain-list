@@ -35,10 +35,12 @@ contract Bank {
     /// @return accounts 按累计存款降序排列的地址。
     /// @return amounts 与地址一一对应的累计金额，单位 Wei。
     function getTop10() external view returns (address[] memory accounts, uint256[] memory amounts) {
-        accounts = new address[](size);
-        amounts = new uint256[](size);
+        // 人数在只读查询中不会变化，缓存后避免循环重复读取同一个存储槽。
+        uint256 count = size;
+        accounts = new address[](count);
+        amounts = new uint256[](count);
         address current = next[address(0)];
-        for (uint256 i; i < size; i++) {
+        for (uint256 i = 0; i < count; i++) {
             accounts[i] = current;
             amounts[i] = deposits[current];
             current = next[current];
@@ -64,50 +66,61 @@ contract Bank {
     function _deposit() private {
         require(msg.value > 0, "Deposit must be positive");
         // 本次只有调用者的累计金额增加，其他用户的相对顺序不变。
-        deposits[msg.sender] += msg.value;
-        _updateTop10(msg.sender);
-        emit Deposited(msg.sender, msg.value, deposits[msg.sender]);
+        uint256 amount = deposits[msg.sender] + msg.value;
+        deposits[msg.sender] = amount;
+        _updateTop10(msg.sender, amount);
+        emit Deposited(msg.sender, msg.value, amount);
     }
 
-    /// @dev 摘下已有节点后按新金额插入，超出 10 人则剪掉尾节点；不遍历全部存款人。
-    /// @param user 本次存款人；其累计金额已经更新，真实交易发送者不可能为零地址。
-    function _updateTop10(address user) private {
-        address previous;
-        // 哨兵也可充当前驱，因此删除第一名和其他节点使用相同操作。
-        while (next[previous] != address(0) && next[previous] != user) {
-            previous = next[previous];
+    /// @dev 按新金额定位；名次不变直接返回，需要换位时才改链接，每个节点至多访问一次。
+    /// @param user 本次非零存款人；累计金额只增不减，因此已有节点只可能前移。
+    /// @param amount 已记入 deposits 的累计 Wei，复用局部值避免重复读取存储。
+    function _updateTop10(address user, uint256 amount) private {
+        address previous = address(0);
+        address current = next[previous];
+        // 先找插入位置，跳过同额用户。遇到自己意味着没有超过任何前人，无需摘下再插回。
+        while (current != address(0) && current != user && deposits[current] >= amount) {
+            previous = current;
+            current = next[current];
         }
-        if (next[previous] == user) {
-            next[previous] = next[user];
-            delete next[user];
-            size--;
-        }
+        if (current == user) return;
 
-        previous = address(0);
-        uint256 position;
-        // 越过所有金额 >= 当前用户的节点，使同额的已有成员保持在前。
-        while (next[previous] != address(0) && deposits[next[previous]] >= deposits[user]) {
-            previous = next[previous];
-            position++;
-        }
-        // 已有 10 人不低于当前用户时，保留其存款记录但不插入链表。
-        if (position == MAX_TOP) return;
-
-        // 先保存后继，再接上前驱，避免丢失链表剩余部分。
-        next[user] = next[previous];
-        next[previous] = user;
-        size++;
-
-        if (size > MAX_TOP) {
-            address last = address(0);
-            for (uint256 i; i < MAX_TOP; i++) {
-                last = next[last];
+        if (current == address(0)) {
+            // 走到末尾仍未遇到自己，说明在榜外。未满时追加；已满且同额/更低则不入榜。
+            if (size < MAX_TOP) {
+                next[previous] = user;
+                size++;
             }
-            // last 是第 10 名；清理第 11 名的链接，不删除其累计金额。
-            address evicted = next[last];
-            delete next[last];
-            delete next[evicted];
-            size--;
+            return;
         }
+
+        // 从插入位置继续向后找自己或尾节点，不再从头遍历。
+        address scanPrevious = previous;
+        address scan = current;
+        address following = next[scan];
+        while (following != address(0) && following != user) {
+            scanPrevious = scan;
+            scan = following;
+            following = next[scan];
+        }
+        if (following == user) {
+            // 榜内前移：只修改旧前驱，自己的链接随后直接覆盖；人数不变。
+            next[scan] = next[user];
+        } else if (size == MAX_TOP) {
+            // 榜满时 scan 是要淘汰的尾节点，其 next 本来就是零，无需再清零。
+            if (scan == current) {
+                // 仅替换第 10 名时，榜外 user 的 next 也为零，只改前驱即可。
+                next[previous] = user;
+                return;
+            }
+            delete next[scanPrevious];
+        } else {
+            // 只有榜单未满且首次入榜，人数才真正增加。
+            size++;
+        }
+
+        // current 是插入后的后继；先连后继再连前驱，已有节点不会重复或成环。
+        next[user] = current;
+        next[previous] = user;
     }
 }

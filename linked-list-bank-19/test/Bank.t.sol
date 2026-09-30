@@ -10,6 +10,10 @@ interface BankVm {
     function prank(address sender) external;
     /// @notice 断言下一次外部调用按给定错误回滚。
     function expectRevert(bytes calldata reason) external;
+    /// @notice 开始记录存储槽访问，用于验证无需换位时没有多余写入。
+    function record() external;
+    /// @notice 返回指定合约自 record 起读写过的存储槽。
+    function accesses(address target) external view returns (bytes32[] memory reads, bytes32[] memory writes);
 }
 
 contract BankTest {
@@ -60,6 +64,49 @@ contract BankTest {
     function testEmptyList() public view {
         _assertRanking(new address[](0));
         require(bank.admin() == address(this), "wrong admin");
+    }
+
+    /// @notice 头、中、尾节点名次不变时，只写累计存款槽，不重写链表或人数。
+    function testUnchangedRankOnlyWritesDeposit() public {
+        address[] memory expected = new address[](3);
+        for (uint256 i = 0; i < 3; i++) {
+            expected[i] = address(uint160(i + 1));
+            _deposit(expected[i], (3 - i) * 10);
+        }
+        for (uint256 i = 0; i < 3; i++) {
+            vm.record();
+            _deposit(expected[i], 1);
+            (, bytes32[] memory writes) = vm.accesses(address(bank));
+            require(writes.length == 1, "unchanged rank rewrote links or size");
+            require(bank.deposits(expected[i]) == (3 - i) * 10 + 1, "deposit not accumulated");
+            _assertRanking(expected);
+        }
+    }
+
+    /// @notice 仅替换第 10 名时链接仍以零结束，淘汰者重回榜尾后还能升到第一。
+    function testTailReplacementAndReentryKeepLinksValid() public {
+        address[] memory expected = new address[](10);
+        for (uint256 i = 0; i < 10; i++) {
+            expected[i] = address(uint160(i + 1));
+            _deposit(expected[i], (10 - i) * 10);
+        }
+        _deposit(address(11), 15);
+        expected[9] = address(11);
+        _assertRanking(expected);
+        require(bank.next(address(10)) == address(0), "evicted tail has stale link");
+
+        _deposit(address(10), 6);
+        expected[9] = address(10);
+        _assertRanking(expected);
+        require(bank.deposits(address(10)) == 16, "reentry lost history");
+        require(bank.next(address(11)) == address(0), "replaced tail has stale link");
+
+        _deposit(address(10), 85);
+        for (uint256 i = 9; i > 0; i--) {
+            expected[i] = expected[i - 1];
+        }
+        expected[0] = address(10);
+        _assertRanking(expected);
     }
 
     /// @notice 同额不挤榜；榜外累计超过门槛可入榜，淘汰者再次追加也能回来。

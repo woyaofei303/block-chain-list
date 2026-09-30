@@ -7,6 +7,7 @@ import { setTimeout } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import {
   createPublicClient,
+  createTestClient,
   createWalletClient,
   getContractAddress,
   http,
@@ -14,14 +15,14 @@ import {
 } from 'viem'
 import { anvil } from 'viem/chains'
 import { runDemo } from '../script/demo.ts'
-import { marketAbi } from '../src/client.ts'
+import { marketAbi, nftAbi, preparePurchase, tokenAbi } from '../src/client.ts'
 import { buildMerkleTree } from '../src/merkle.ts'
 
 const execute = promisify(execFile)
 
 // 独立 RPC 验证真实部署、奇数叶 Merkle 证明、钱包签名、客户端编码与一笔成交，结束释放节点。
 test('forge script deployment and TypeScript permit/multicall purchase on Anvil', {
-  timeout: 120_000,
+  timeout: 180_000,
 }, async (t) => {
   const server = createServer()
   server.listen(0, '127.0.0.1')
@@ -35,7 +36,15 @@ test('forge script deployment and TypeScript permit/multicall purchase on Anvil'
   // 静默启动避免 Anvil 打印测试私钥；仅清理本测试创建的进程。
   const process = spawn(
     'anvil',
-    ['--host', '127.0.0.1', '--port', String(address.port), '--silent'],
+    [
+      '--host',
+      '127.0.0.1',
+      '--port',
+      String(address.port),
+      '--hardfork',
+      'cancun',
+      '--silent',
+    ],
     { stdio: 'ignore' },
   )
   let spawnError: Error | undefined
@@ -55,6 +64,7 @@ test('forge script deployment and TypeScript permit/multicall purchase on Anvil'
   })
   const publicClient = createPublicClient({
     chain: anvil,
+    pollingInterval: 50,
     transport: http(rpcUrl, { retryCount: 0, timeout: 500 }),
   })
   const wallet = createWalletClient({ chain: anvil, transport: http(rpcUrl) })
@@ -146,4 +156,170 @@ test('forge script deployment and TypeScript permit/multicall purchase on Anvil'
       typeof value === 'bigint' ? value.toString() : value,
     ),
   )
+
+  const buyer = accounts[1]
+  const proof = tree.entries[0].proof
+  const control = createTestClient({
+    chain: anvil,
+    mode: 'anvil',
+    transport: http(rpcUrl),
+  })
+  /** 等待实际回执，准备交易与被测购买分开统计，失败不能当作节省 Gas。 */
+  async function confirmed(hash: `0x${string}`) {
+    const receipt = await publicClient.waitForTransactionReceipt({ hash })
+    assert.equal(receipt.status, 'success')
+    return receipt.gasUsed
+  }
+  /** 读取实际额度后选择旧合约已有入口；每项预算精确为 50 Token，不部署新合约。 */
+  async function purchase(ids: readonly bigint[]) {
+    const call = await preparePurchase({
+      publicClient,
+      wallet,
+      buyer,
+      market,
+      proof,
+      // 每件商品独立携带最高价，链上仍逐项验证价格及 proof。
+      items: ids.map((tokenId) => ({ tokenId, maxPayment: parseEther('50') })),
+    })
+    return confirmed(await wallet.sendTransaction({ account: buyer, ...call }))
+  }
+
+  await confirmed(
+    await wallet.writeContract({
+      account: seller,
+      address: report.token,
+      abi: tokenAbi,
+      functionName: 'transfer',
+      args: [buyer, parseEther('10000')],
+    }),
+  )
+  let initialSnapshot = await control.snapshot()
+  const gasRows: Record<string, string | number>[] = []
+  for (const count of [1, 5, 10]) {
+    // 每一行也恢复相同资产余额与 Permit nonce，避免前一行预先写入存储的干扰。
+    await control.revert({ id: initialSnapshot })
+    initialSnapshot = await control.snapshot()
+    const ids: bigint[] = []
+    for (let i = 0; i < count; ++i) {
+      const id = await publicClient.readContract({
+        address: report.nft,
+        abi: nftAbi,
+        functionName: 'nextTokenId',
+      })
+      ids.push(id)
+      await confirmed(
+        await wallet.writeContract({
+          account: seller,
+          address: report.nft,
+          abi: nftAbi,
+          functionName: 'mint',
+          args: [seller],
+        }),
+      )
+      await confirmed(
+        await wallet.writeContract({
+          account: seller,
+          address: report.nft,
+          abi: nftAbi,
+          functionName: 'approve',
+          args: [market, id],
+        }),
+      )
+      await confirmed(
+        await wallet.writeContract({
+          account: seller,
+          address: market,
+          abi: marketAbi,
+          functionName: 'list',
+          args: [id, parseEther('100')],
+        }),
+      )
+    }
+    let snapshot = await control.snapshot()
+    let separate = 0n
+    for (const id of ids) separate += await purchase([id])
+    await control.revert({ id: snapshot })
+    snapshot = await control.snapshot()
+    const nonceBefore = await publicClient.readContract({
+      address: report.token,
+      abi: tokenAbi,
+      functionName: 'nonces',
+      args: [buyer],
+    })
+    const balanceBefore = await publicClient.readContract({
+      address: report.token,
+      abi: tokenAbi,
+      functionName: 'balanceOf',
+      args: [buyer],
+    })
+    const sharedPermit = await purchase(ids)
+    if (count > 1) assert.ok(sharedPermit < separate)
+    else assert.equal(sharedPermit, separate)
+    assert.equal(
+      await publicClient.readContract({
+        address: report.token,
+        abi: tokenAbi,
+        functionName: 'nonces',
+        args: [buyer],
+      }),
+      nonceBefore + 1n,
+    )
+    assert.equal(
+      await publicClient.readContract({
+        address: report.token,
+        abi: tokenAbi,
+        functionName: 'balanceOf',
+        args: [buyer],
+      }),
+      balanceBefore - BigInt(count) * parseEther('50'),
+    )
+    for (const id of ids)
+      assert.equal(
+        await publicClient.readContract({
+          address: report.nft,
+          abi: nftAbi,
+          functionName: 'ownerOf',
+          args: [id],
+        }),
+        buyer,
+      )
+    await control.revert({ id: snapshot })
+    const approvalGas = await confirmed(
+      await wallet.writeContract({
+        account: buyer,
+        address: report.token,
+        abi: tokenAbi,
+        functionName: 'approve',
+        args: [market, BigInt(count) * parseEther('50')],
+      }),
+    )
+    const existingAllowance = await purchase(ids)
+    assert.ok(existingAllowance < sharedPermit)
+    assert.equal(
+      await publicClient.readContract({
+        address: report.token,
+        abi: tokenAbi,
+        functionName: 'nonces',
+        args: [buyer],
+      }),
+      nonceBefore,
+    )
+    assert.equal(
+      await publicClient.readContract({
+        address: report.token,
+        abi: tokenAbi,
+        functionName: 'allowance',
+        args: [buyer, market],
+      }),
+      0n,
+    )
+    gasRows.push({
+      count,
+      separate: String(separate),
+      sharedPermit: String(sharedPermit),
+      existingAllowance: String(existingAllowance),
+      approvalGas: String(approvalGas),
+    })
+  }
+  console.log(JSON.stringify({ clientOnlyGas: gasRows }))
 })
