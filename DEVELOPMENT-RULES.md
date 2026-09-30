@@ -15,7 +15,7 @@
 
 - 每个新增的独立学习项目放在仓库根目录，名称使用小写英文、数字和连字符，并在**尾部**附加序号：`<project-name>-<NN>`，例如 `staking-14`。
 - 编号在整个仓库内唯一，按新建顺序递增。创建前同时检查实际一级项目目录与下方项目索引，取已有最大编号再加 1；不能用目录数量加 1，也不能每个主题重新从 `01` 开始。
-- 序号至少两位：`01` 至 `99`，之后继续 `100`。当前最大编号是 `20`，下一个应为 `21`；这是当前状态，未来必须重新计算，不能一直使用 `21`。
+- 序号至少两位：`01` 至 `99`，之后继续 `100`。当前最大编号是 `21`，下一个应为 `22`；这是当前状态，未来必须重新计算，不能一直使用 `22`。
 - 已有项目保持编号。删除或归档项目时保留占号记录，不回收编号、不填补空号、不重新按文件时间排序。修改内容或新增前端不会使旧项目变成新项目。
 - `frontend/`、`backend/`、`src/`、`contracts/`、`test/` 等项目内部目录不单独编号；`.git/`、`.github/`、`.idea/`、`.superpowers/`、`docs-tdd/`、`output-tdd/` 等配置或辅助目录也不编号。
 - 真正创建目录前再次检查编号和目标路径是否被占用；发现重复就重新计算，不覆盖或合并已有目录。默认不新建嵌套 Git 仓库。
@@ -46,6 +46,7 @@
 18. `esrnt-storage-18`：Viem `getStorageAt` 读取 esRNT 私有结构体数组。读 [项目规则](esrnt-storage-18/AGENTS.md)、[README](esrnt-storage-18/README.md) 和 [运行日志](esrnt-storage-18/RUN_LOG.md)。TypeScript / npm，使用原始存储槽解码地址、uint64 时间与 uint256 金额；Foundry 无第三方库，默认仅在独立 Anvil 本地链验证。
 19. `linked-list-bank-19`：Solidity 可迭代单链表 Bank。读 [项目规则](linked-list-bank-19/AGENTS.md) 与 [README](linked-list-bank-19/README.md)。接收钱包直接转入 ETH、记录累计存款，以单链表维护前 10 名；同额不挤榜，管理员提款保留历史。Foundry 无第三方库，包含边界与随机序列测试、部署脚本和完整本地 Anvil 操作步骤。
 20. `merkle-nft-market-20`：Merkle 白名单五折 NFT 市场、EIP-2612 Permit 与 delegatecall Multicall。读 [项目规则](merkle-nft-market-20/AGENTS.md) 与 [README](merkle-nft-market-20/README.md)。Foundry 合约复用 09 的第三方库，TypeScript / Viem 构建 Merkle 树与一笔交易封装；包含行为、回滚、重入和本地 Anvil 集成测试。
+21. `upgradeable-nft-market-21`：UUPS 可升级 ERC721 与 NFTMarket V1/V2，EIP-712 离线签名上架与成交。读 [项目规则](upgradeable-nft-market-21/AGENTS.md)、[README](upgradeable-nft-market-21/README.md) 和 [测试日志](upgradeable-nft-market-21/TEST_LOG.md)。成对固定 OpenZeppelin 5.7.0，包含状态保留、签名安全、回滚与重入测试及独立部署/升级脚本；公共测试网广播与浏览器验证状态以项目 README 为准。
 
 ## 4. 新建项目的最小交付
 
