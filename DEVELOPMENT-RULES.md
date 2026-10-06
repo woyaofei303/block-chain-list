@@ -47,6 +47,7 @@
 19. `linked-list-bank-19`：Solidity 可迭代单链表 Bank。读 [项目规则](linked-list-bank-19/AGENTS.md) 与 [README](linked-list-bank-19/README.md)。接收钱包直接转入 ETH、记录累计存款，以单链表维护前 10 名；同额不挤榜，管理员提款保留历史。Foundry 无第三方库，包含边界与随机序列测试、部署脚本和完整本地 Anvil 操作步骤。
 20. `merkle-nft-market-20`：Merkle 白名单五折 NFT 市场、EIP-2612 Permit 与 delegatecall Multicall。读 [项目规则](merkle-nft-market-20/AGENTS.md) 与 [README](merkle-nft-market-20/README.md)。Foundry 合约复用 09 的第三方库，TypeScript / Viem 构建 Merkle 树与一笔交易封装；包含行为、回滚、重入和本地 Anvil 集成测试。
 21. `upgradeable-nft-market-21`：UUPS 可升级 ERC721 与 NFTMarket V1/V2，EIP-712 离线签名上架与成交。读 [项目规则](upgradeable-nft-market-21/AGENTS.md)、[README](upgradeable-nft-market-21/README.md) 和 [测试日志](upgradeable-nft-market-21/TEST_LOG.md)。成对固定 OpenZeppelin 5.7.0，包含状态保留、签名安全、回滚与重入测试及独立部署/升级脚本；公共测试网广播与浏览器验证状态以项目 README 为准。
+22. `vault-22`：Vault CTF，使用 ABI 编码触发 delegatecall 存储槽碰撞接管 owner，再通过提款重入清空余额。读 [项目规则](vault-22/AGENTS.md)、[README](vault-22/README.md)、[src/Vault.sol](vault-22/src/Vault.sol) 和 [test/Vault.t.sol](vault-22/test/Vault.t.sol)。故意保留漏洞，仅在本地 Forge EVM / Anvil 验证，不执行公共链资金操作。
 
 ## 4. 新建项目的最小交付
 
