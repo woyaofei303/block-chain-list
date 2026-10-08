@@ -115,7 +115,7 @@ tokenAddress：T 的完整地址
 4. 点击 Deploy，展开新生成的 TokenBank 实例，复制其地址作为 **K**。
 5. 查询 `token()`，确认返回 T；在 `balances` 中填写 A 地址，应返回 0。再到 BaseERC20 查询 `balanceOf(K)`，也应为 0。
 
-银行构造函数只绑定已有 Token，不会再次发行代币。部署者 A 也没有代提其他用户存款的特权。如果误填了别的 Token，银行部署后无法更换绑定地址，需要使用正确的 T 重新部署银行。
+银行构造函数只绑定已有 Token，不会再次发行代币。部署者 A 是 owner，可配置一个合约地址作为 CRE Receiver；owner 或该 Receiver 才能调用 `withdrawhalf`。如果误填了别的 Token，银行部署后无法更换绑定地址，需要使用正确的 T 重新部署银行。
 
 ## 3. 账户 A 完成一次存款与提款
 
@@ -373,7 +373,7 @@ amount：21000000000000000000
 1. 确认第 1 节的 Solidity `0.8.24`、EVM `shanghai`、关闭优化配置已经设置。
 2. 打开 Plugins，搜索并启用 **Solidity unit testing**。
 3. 测试目录使用已有的 `tests`，勾选 `tests/TokenBank_test.sol`，点击 **Run**。
-4. 等待结果，预期为 `Passed: 5`、`Failed: 0`。如果失败，展开对应测试检查错误原因。
+4. 等待结果，修改后的测试预期为 `Passed: 6`、`Failed: 0`。本次尚未在浏览器中重跑；如果执行失败，展开对应测试检查错误原因。
 
 `remix_tests.sol` 断言库由插件注入。插件在独立环境中运行测试，不会在手动部署面板中自动生成第 2 节的 T、K；测试与手动操作不要混用地址。[Remix 单元测试说明](https://remix-ide.readthedocs.io/en/latest/unittesting.html)
 
@@ -384,8 +384,9 @@ amount：21000000000000000000
 3. `authorizationAndUserIsolation`：未授权、余额不足、超额提款，以及不同用户的余额隔离。
 4. `invalidInputsAndDirectTransfer`：零金额、空余额提款、无效 Token 地址，以及直接转账不自动记账。
 5. `failedTransfersRollBackAndCanRetry`：使用返回值替身模拟 Token 返回 false，验证存款不入账、提款回滚及恢复后的重试。真实代币的资产流由前面的测试负责验证。
+6. `automatedHalfWithdrawalPreservesClaims`：验证 owner 配置 Receiver 后按比例减少用户账本，并把一半已记账存款转给指定地址。
 
-**2026-09-10 已实际完成的运行记录：** Remix `2.5.7`，工作区 `tokenbank`，Solidity `0.8.24`，EVM `shanghai`，Optimization 关闭；编译成功，**Passed: 5，Failed: 0，Time Taken: 0.48 s**。该耗时是已有运行记录，再次执行时不要求耗时完全相同。
+**历史运行记录（2026-09-10，自动化入口修改前）：** Remix `2.5.7`，工作区 `tokenbank`，Solidity `0.8.24`，EVM `shanghai`，Optimization 关闭；编译成功，**Passed: 5，Failed: 0，Time Taken: 0.48 s**。本次修改后的 6 组 Remix 测试尚未在浏览器中重跑。
 
 ## 7. 交易结果、证据与作业提交
 
@@ -418,6 +419,8 @@ amount：21000000000000000000
 - **TokenBank 题目**：可复制 `contracts/TokenBank.sol` 的完整内容，包含文件顶部的 `IERC20` 接口；也可以在答题框填写下方项目链接。`IERC20` 只是调用接口，实际使用时仍需先部署 BaseERC20，再把 T 传给银行。
 
 项目提交链接：[GitHub · tokenbank](https://github.com/woyaofei303/block-chain-list/tree/main/tokenbank-07)
+
+CRE Receiver 与自动化 workflow：[GitHub · cre-project-23](https://github.com/woyaofei303/block-chain-list/tree/main/cre-project-23)
 
 不需要把测试辅助合约部署为业务合约。Remix VM 的地址和交易属于浏览器模拟链，不能当作 Sepolia 或主网部署证据。图片额外提到了部署 ERC20，但未指定网络；当前已完成合约实现与 Remix 模拟测试，公共网络部署和网页答题提交尚未执行。
 

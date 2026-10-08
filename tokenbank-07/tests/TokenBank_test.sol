@@ -12,16 +12,18 @@ contract TokenBankTest {
     TokenBank private bank;
     TokenBankUser private bob;
 
+    /// @notice 创建独立用户辅助合约，用于区分 msg.sender。
     function beforeAll() public {
         bob = new TokenBankUser();
     }
 
-    // 每项测试使用全新的代币和银行，避免相互影响。
+    /// @notice 每项测试使用全新的代币和银行，避免相互影响。
     function beforeEach() public {
         token = new BaseERC20();
         bank = new TokenBank(address(token));
     }
 
+    /// @notice 检查发行、精度、授权与失败转账的原子回滚。
     function initialStateAndTokenRules() public {
         uint256 supply = 100_000_000 * 10 ** 18;
         Assert.equal(token.name(), "BaseERC20", "Token name");
@@ -39,12 +41,23 @@ contract TokenBankTest {
         token.transferFrom(address(this), address(bob), 3);
         Assert.equal(token.allowance(address(this), address(this)), uint256(1), "Approve replaces; transferFrom spends");
         Assert.equal(token.balanceOf(address(bob)), uint256(3), "Recipient receives tokens");
-        _expectRevert(address(token), abi.encodeCall(token.transferFrom, (address(this), address(bob), 2)), "ERC20: transfer amount exceeds allowance");
+        _expectRevert(
+            address(token),
+            abi.encodeCall(token.transferFrom, (address(this), address(bob), 2)),
+            "ERC20: transfer amount exceeds allowance"
+        );
         Assert.equal(token.balanceOf(address(bob)), uint256(3), "Failed transferFrom rolls back tokens");
-        _expectRevert(address(token), abi.encodeCall(token.transfer, (address(bob), supply)), "ERC20: transfer amount exceeds balance");
-        _expectRevert(address(token), abi.encodeCall(token.transfer, (address(0), 1)), "ERC20: transfer to the zero address");
+        _expectRevert(
+            address(token),
+            abi.encodeCall(token.transfer, (address(bob), supply)),
+            "ERC20: transfer amount exceeds balance"
+        );
+        _expectRevert(
+            address(token), abi.encodeCall(token.transfer, (address(0), 1)), "ERC20: transfer to the zero address"
+        );
     }
 
+    /// @notice 检查累积存款、部分提款和全额提款的资产/账本一致性。
     function depositAndWithdraw() public {
         uint256 supply = token.totalSupply();
         token.approve(address(bank), 30);
@@ -63,7 +76,7 @@ contract TokenBankTest {
         Assert.equal(token.balanceOf(address(this)), supply, "All tokens return to user");
     }
 
-    // bob 是独立调用者，用于验证用户之间的余额隔离。
+    /// @notice bob 是独立调用者，用于验证用户之间的余额隔离。
     function authorizationAndUserIsolation() public {
         token.transfer(address(bob), 10);
         _expectRevert(address(bank), abi.encodeCall(bank.deposit, (1)), "ERC20: transfer amount exceeds allowance");
@@ -88,6 +101,7 @@ contract TokenBankTest {
         Assert.equal(token.balanceOf(address(bob)), uint256(10), "Other user receives own tokens");
     }
 
+    /// @notice 拒绝零金额、无效 Token；直接转币不得形成用户存款。
     function invalidInputsAndDirectTransfer() public {
         _expectRevert(address(bank), abi.encodeCall(bank.deposit, (0)), "Amount must be positive");
         _expectRevert(address(bank), abi.encodeCall(bank.withdraw, (0)), "Amount must be positive");
@@ -104,6 +118,7 @@ contract TokenBankTest {
         Assert.equal(token.balanceOf(address(bank)), uint256(5), "Uncredited tokens cannot be withdrawn");
     }
 
+    /// @notice Token 返回 false 时存取款回滚，恢复后同一操作可重试。
     function failedTransfersRollBackAndCanRetry() public {
         SwitchableToken failingToken = new SwitchableToken();
         TokenBank failingBank = new TokenBank(address(failingToken));
@@ -119,7 +134,26 @@ contract TokenBankTest {
         Assert.equal(failingBank.balances(address(this)), uint256(0), "Withdrawal can be retried");
     }
 
-    // 同时核对调用失败和具体原因，避免因其他错误失败也被当作通过。
+    /// @notice 验证自动入口受限、半额按用户比例扣账且银行账面仍与实际资产一致。
+    function automatedHalfWithdrawalPreservesClaims() public {
+        token.transfer(address(bob), 40);
+        token.approve(address(bank), 60);
+        bank.deposit(60);
+        bob.approve(token, bank, 40);
+        bob.deposit(bank, 40);
+
+        _expectRevert(address(bob), abi.encodeCall(bob.withdrawhalf, (bank, address(0xBEEF))), "Not authorized");
+        bank.setAutomationReceiver(address(bob));
+        bob.withdrawhalf(bank, address(0xBEEF));
+
+        Assert.equal(bank.totalDeposits(), uint256(50), "Half sweep updates total deposits");
+        Assert.equal(bank.balances(address(this)), uint256(30), "First user keeps half claim");
+        Assert.equal(bank.balances(address(bob)), uint256(20), "Second user keeps half claim");
+        Assert.equal(token.balanceOf(address(bank)), uint256(50), "Bank assets match claims");
+        Assert.equal(token.balanceOf(address(0xBEEF)), uint256(50), "Recipient receives half");
+    }
+
+    /// @notice 同时核对调用失败和具体原因，避免其他错误被当作通过。
     function _expectRevert(address target, bytes memory data, string memory message) private {
         (bool ok, bytes memory reason) = target.call(data);
         Assert.ok(!ok, "Call must revert");

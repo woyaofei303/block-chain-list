@@ -1,0 +1,7 @@
+*.env
+secrets.yaml
+node_modules/
+dist/
+out/
+cache/
+.cre_build_tmp.js

@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@chainlink/cre-sdk": [
+        "./node_modules/@chainlink/cre-sdk/dist/index-unrestricted.d.ts"
+      ]
+    }
+  },
+  "include": ["integration.test.ts", "workflow.ts"]
+}

@@ -1,0 +1,20 @@
+[profile.default]
+src = "evm/src"
+test = "test"
+script = "script"
+libs = ["../../foundry-counter-09/lib"]
+remappings = [
+    "@openzeppelin/=../../foundry-counter-09/lib/openzeppelin-contracts/",
+    "tokenbank/=../../tokenbank-07/",
+]
+allow_paths = ["../../tokenbank-07"]
+out = "../../output-tdd/tokenbank-cre/contracts/out"
+cache_path = "../../output-tdd/tokenbank-cre/contracts/cache"
+broadcast = "../../output-tdd/tokenbank-cre/broadcast"
+solc_version = "0.8.24"
+evm_version = "shanghai"
+optimizer = false
+
+[fmt]
+# 原始 CRE / OpenZeppelin 模板保持原样，仅格式化本次自有代码。
+ignore = ["evm/src/ReceiverTemplate.sol", "evm/src/IReceiver.sol", "evm/src/IERC165.sol", "evm/src/KeeperConsumer.sol"]

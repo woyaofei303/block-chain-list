@@ -2,7 +2,7 @@
 
 本项目位于现有仓库的 `tokenbank-07/`，沿用其他合约练习的 Remix 开发方式。
 
-当前状态：ERC20、TokenBank 及 Remix 测试已实现；在 Remix 中编译成功，五组测试全部通过。只使用 Remix 验证，未部署到公共网络，也未提交答题表单。下文区分网页题目要求、图片补充要求和本项目实现。
+当前状态：ERC20、TokenBank 及 Remix 测试已实现；在原有存取款流程上增加了受权限保护的 `withdrawhalf`，并由 [cre-project-23](../cre-project-23/README.md) 提供 Chainlink CRE Receiver。修改后的 Remix 测试尚未在浏览器中重跑；CRE 侧已通过 Forge、SDK + Anvil 划款集成测试及 CLI 跳过分支模拟，详见 [本次日志](../cre-project-23/RUN_LOG.md)。未部署到公共网络，也未提交答题表单。
 
 完整操作步骤见 [Remix 完整操作流程](REMIX_GUIDE.md)，包含环境准备、部署、授权、存取款、多用户验证、异常检查和作业提交。
 
@@ -75,7 +75,7 @@ ERC20: transfer amount exceeds allowance
 
 `approve` 只授予额度，不转移代币；存款时调用 Token 的是 TokenBank，因此授权对象应为 TokenBank。提款由 TokenBank 转出其持有的代币，不需要用户再次授权。相关接口语义见 [ERC20 标准](https://eips.ethereum.org/EIPS/eip-20)。
 
-银行中的余额应表示“累计存入减去累计取出”的当前可提余额。用户直接调用 Token 的 `transfer` 向银行地址转账，不会自动执行银行的 `deposit` 记账。
+银行中的余额表示“累计存入减去个人提款及自动划转分摊”的当前可提余额。用户直接调用 Token 的 `transfer` 向银行地址转账，不会自动执行银行的 `deposit` 记账。
 
 实现会检查代币转账结果，失败时回滚记账。提款先检查个人余额、扣账，再调用代币转账。[ERC20 标准明确要求处理返回的 false](https://eips.ethereum.org/EIPS/eip-20#methods)。
 
@@ -94,8 +94,8 @@ tokenbank-07/
 ```
 
 - [BaseERC20.sol](contracts/BaseERC20.sol)：发行一亿枚、18 位精度的 BERC20，全部分配给部署者；无后续增发入口。遵循题目接口与报错要求，本地版本将公共转账逻辑集中在 `_transfer`。
-- [TokenBank.sol](contracts/TokenBank.sol)：文件内包含所需的 `IERC20` 接口，可将整个文件直接复制到答题框。代币地址部署时固定，`balances(address)` 返回用户当前可提余额；无管理员提款功能。
-- [TokenBank_test.sol](tests/TokenBank_test.sol)：五组 Remix 测试。每组重新部署 Token 和 Bank，避免状态相互影响。
+- [TokenBank.sol](contracts/TokenBank.sol)：文件内包含所需的 `IERC20` 接口，可将整个文件直接复制到答题框。代币地址部署时固定，`balances(address)` 返回用户当前可提余额；owner 可配置 CRE Receiver，按比例划转已记账存款的一半。
+- [TokenBank_test.sol](tests/TokenBank_test.sol)：六组 Remix 测试。每组重新部署 Token 和 Bank，避免状态相互影响。
 - [TokenBankHelpers.sol](tests/TokenBankHelpers.sol)：模拟第二位存款人，以及返回 `false` 的代币调用。
 
 银行拒绝零金额、超出个人存款余额的提款，以及零地址或没有合约代码的 Token 地址。存款和提款分别发出 `Deposited`、`Withdrawn` 事件。
@@ -111,15 +111,16 @@ tokenbank-07/
 5. 在 Plugins 中启用 **Solidity unit testing**，测试目录选择 `tests`，勾选 `tests/TokenBank_test.sol`，点击 **Run**。
 6. `remix_tests.sol` 由插件提供，不需要安装本地依赖。测试在 Remix 的模拟环境中创建和调用合约，不需要连接钱包。
 
-**2026-09-10 实际运行结果：** Remix `2.5.7`，工作区 `tokenbank`，Solidity `0.8.24`，EVM `shanghai`，Optimization 关闭；编译成功，**Passed: 5，Failed: 0，Time Taken: 0.48 s**。
+**历史运行结果（2026-09-10）：** 修改自动化入口之前，Remix `2.5.7`，工作区 `tokenbank`，Solidity `0.8.24`，EVM `shanghai`，Optimization 关闭；编译成功，**Passed: 5，Failed: 0，Time Taken: 0.48 s**。本次修改后的 Remix 浏览器测试未重跑，不能沿用这条历史结果宣称 6 组通过。
 
-通过的测试：
+当前测试用例（前五组有上述历史通过记录，第六组为本次新增）：
 
 1. `initialStateAndTokenRules`：名称、符号、精度、总量、初始余额、自转账、零转账、覆盖授权、消耗授权及转账失败回滚。
 2. `depositAndWithdraw`：授权后存款、追加存款、部分提款、全部提款，以及 Token 实际余额。
 3. `authorizationAndUserIsolation`：未授权存款、Token 余额不足、超额提款、禁止提取他人余额，以及失败时状态不变。
 4. `invalidInputsAndDirectTransfer`：零金额、空余额提款、无效 Token 地址，以及直接转账不自动记账。
 5. `failedTransfersRollBackAndCanRetry`：转账返回 `false` 时存款不入账、提款扣账回滚，恢复后可重新提款。
+6. `automatedHalfWithdrawalPreservesClaims`：只有 owner 配置的 Receiver 能触发半额划转；多用户账本按比例减少，银行实际持仓与 `totalDeposits` 一致。
 
 ## 6. Remix VM 手动复现与提交
 
@@ -135,6 +136,8 @@ tokenbank-07/
 6. 调用 `withdraw(6000000000000000000)` 提取剩余 6 枚，可提余额归零。所有操作的 **Value 保持 0 Wei**，Token 数量填写在函数参数中。
 
 答题时可复制 `contracts/TokenBank.sol` 的完整内容，或填写本项目的 [GitHub 链接](https://github.com/woyaofei303/block-chain-list/tree/main/tokenbank-07)。
+
+自动化 Receiver、CRE Cron 工作流、Foundry 测试和部署脚本见 [cre-project-23](../cre-project-23/README.md)。
 
 图片额外提到部署 ERC20，但未指定网络。当前完成范围为合约实现与 Remix 模拟验证，公共网络部署尚未执行。
 

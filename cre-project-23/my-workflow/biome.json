@@ -1,0 +1,9 @@
+{
+  "files": {
+    "includes": ["*.ts", "*.json", "!.cre_build_tmp.js"]
+  },
+  "formatter": { "indentStyle": "space", "indentWidth": 2 },
+  "javascript": {
+    "formatter": { "semicolons": "asNeeded", "quoteStyle": "single" }
+  }
+}

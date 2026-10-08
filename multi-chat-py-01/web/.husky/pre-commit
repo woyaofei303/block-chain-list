@@ -43,3 +43,12 @@ fi
 if git diff --cached --name-only -- merkle-nft-market-20/ | grep -q .; then
   npm --prefix merkle-nft-market-20 run precommit
 fi
+
+# CRE 与共享 TokenBank：先格式检查，再严格类型和实际行为测试。
+if git diff --cached --name-only -- cre-project-23/ tokenbank-07/contracts/ tokenbank-07/tests/ | grep -q .; then
+  bun run --cwd cre-project-23/my-workflow check
+  forge fmt --check --root cre-project-23/contracts
+  bun run --cwd cre-project-23/my-workflow typecheck
+  bun run --cwd cre-project-23/my-workflow test
+  forge test --root cre-project-23/contracts
+fi
