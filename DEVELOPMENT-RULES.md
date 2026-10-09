@@ -50,6 +50,7 @@
 22. `vault-22`：Vault CTF，使用 ABI 编码触发 delegatecall 存储槽碰撞接管 owner，再通过提款重入清空余额。读 [项目规则](vault-22/AGENTS.md)、[README](vault-22/README.md)、[src/Vault.sol](vault-22/src/Vault.sol) 和 [test/Vault.t.sol](vault-22/test/Vault.t.sol)。故意保留漏洞，仅在本地 Forge EVM / Anvil 验证，不执行公共链资金操作。
 23. `cre-project-23`：Chainlink CRE Cron 自动化 TokenBank 半额划转。读 [项目规则](cre-project-23/AGENTS.md) 与 [README](cre-project-23/README.md)。Receiver 通过 CRE Forwarder 调用 `TokenBank.withdrawhalf`，阈值在部署时配置；只在本地 Forge、Bun 和 CRE simulate 验证，不默认广播公共链交易。
 24. `vesting-24`：ERC20 Vesting，部署后 12 个月 Cliff，随后按完整月分 24 期解锁 100 万枚代币。读 [项目规则](vesting-24/AGENTS.md) 与 [README](vesting-24/README.md)。Foundry 的 forge-std / OpenZeppelin 固定在本项目 `lib/`，以 30 天为一个教学月，包含时间边界、回滚、重入、随机配额测试和本地 Anvil 部署核验。
+25. `uniswap-v2-25`：Uniswap V2 Core / Router02 源码分析与本地部署。读 [项目规则](uniswap-v2-25/AGENTS.md)、[README](uniswap-v2-25/README.md)、[源码解读](uniswap-v2-25/SOURCE_WALKTHROUGH.md) 与 [上游来源](uniswap-v2-25/UPSTREAM.md)。保留 Solidity 0.5.16 / 0.6.6，测试与脚本使用 0.8.24，复用 09 的 forge-std；本地重新计算 `pairFor` 创建字节码哈希，覆盖 LP、兑换、权限与回滚，只在独立 Anvil 验证。
 
 ## 4. 新建项目的最小交付
 

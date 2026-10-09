@@ -1,0 +1,21 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "../output-tdd/uniswap-v2-25/out"
+cache_path = "../output-tdd/uniswap-v2-25/cache"
+broadcast = "../output-tdd/uniswap-v2-25/broadcast"
+libs = ["lib", "../foundry-counter-09/lib"]
+auto_detect_remappings = false
+remappings = [
+    "forge-std/=../foundry-counter-09/lib/forge-std/src/",
+    "@uniswap/v2-core/contracts/=src/core/",
+    "@uniswap/lib/=lib/uniswap-lib/"
+]
+auto_detect_solc = true
+evm_version = "istanbul"
+optimizer = true
+optimizer_runs = 999999
+
+[fuzz]
+runs = 256
