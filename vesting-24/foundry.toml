@@ -1,0 +1,15 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "../output-tdd/vesting-24/out"
+cache_path = "../output-tdd/vesting-24/cache"
+broadcast = "../output-tdd/vesting-24/broadcast"
+libs = ["lib"]
+auto_detect_remappings = false
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+    "openzeppelin-contracts/=lib/openzeppelin-contracts/"
+]
+solc_version = "0.8.24"
+evm_version = "shanghai"

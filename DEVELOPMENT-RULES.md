@@ -15,7 +15,7 @@
 
 - 每个新增的独立学习项目放在仓库根目录，名称使用小写英文、数字和连字符，并在**尾部**附加序号：`<project-name>-<NN>`，例如 `staking-14`。
 - 编号在整个仓库内唯一，按新建顺序递增。创建前同时检查实际一级项目目录与下方项目索引，取已有最大编号再加 1；不能用目录数量加 1，也不能每个主题重新从 `01` 开始。
-- 序号至少两位：`01` 至 `99`，之后继续 `100`。当前最大编号是 `21`，下一个应为 `22`；这是当前状态，未来必须重新计算，不能一直使用 `22`。
+- 序号至少两位：`01` 至 `99`，之后继续 `100`。创建前重新计算实际一级项目目录与第 3 节索引中的最大编号，不维护静态“当前最大编号”。
 - 已有项目保持编号。删除或归档项目时保留占号记录，不回收编号、不填补空号、不重新按文件时间排序。修改内容或新增前端不会使旧项目变成新项目。
 - `frontend/`、`backend/`、`src/`、`contracts/`、`test/` 等项目内部目录不单独编号；`.git/`、`.github/`、`.idea/`、`.superpowers/`、`docs-tdd/`、`output-tdd/` 等配置或辅助目录也不编号。
 - 真正创建目录前再次检查编号和目标路径是否被占用；发现重复就重新计算，不覆盖或合并已有目录。默认不新建嵌套 Git 仓库。
@@ -49,6 +49,7 @@
 21. `upgradeable-nft-market-21`：UUPS 可升级 ERC721 与 NFTMarket V1/V2，EIP-712 离线签名上架与成交。读 [项目规则](upgradeable-nft-market-21/AGENTS.md)、[README](upgradeable-nft-market-21/README.md) 和 [测试日志](upgradeable-nft-market-21/TEST_LOG.md)。成对固定 OpenZeppelin 5.7.0，包含状态保留、签名安全、回滚与重入测试及独立部署/升级脚本；公共测试网广播与浏览器验证状态以项目 README 为准。
 22. `vault-22`：Vault CTF，使用 ABI 编码触发 delegatecall 存储槽碰撞接管 owner，再通过提款重入清空余额。读 [项目规则](vault-22/AGENTS.md)、[README](vault-22/README.md)、[src/Vault.sol](vault-22/src/Vault.sol) 和 [test/Vault.t.sol](vault-22/test/Vault.t.sol)。故意保留漏洞，仅在本地 Forge EVM / Anvil 验证，不执行公共链资金操作。
 23. `cre-project-23`：Chainlink CRE Cron 自动化 TokenBank 半额划转。读 [项目规则](cre-project-23/AGENTS.md) 与 [README](cre-project-23/README.md)。Receiver 通过 CRE Forwarder 调用 `TokenBank.withdrawhalf`，阈值在部署时配置；只在本地 Forge、Bun 和 CRE simulate 验证，不默认广播公共链交易。
+24. `vesting-24`：ERC20 Vesting，部署后 12 个月 Cliff，随后按完整月分 24 期解锁 100 万枚代币。读 [项目规则](vesting-24/AGENTS.md) 与 [README](vesting-24/README.md)。Foundry 的 forge-std / OpenZeppelin 固定在本项目 `lib/`，以 30 天为一个教学月，包含时间边界、回滚、重入、随机配额测试和本地 Anvil 部署核验。
 
 ## 4. 新建项目的最小交付
 

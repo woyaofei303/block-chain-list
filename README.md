@@ -2,7 +2,7 @@
 
 区块链学习与全栈实践仓库，记录从 PoW、数字签名、Solidity 合约到事件索引和钱包页面的练习。每个项目保留自己的源码、说明、运行方式和验证入口，方便按顺序复习。
 
-**复习按目录尾部编号 `01 → 23` 进行。** GitHub 按目录名称排列，不代表学习顺序；可以直接使用下面的索引。
+**复习按目录尾部编号 `01 → 24` 进行。** GitHub 按目录名称排列，不代表学习顺序；可以直接使用下面的索引。
 
 ## 项目与复习顺序
 
@@ -31,6 +31,7 @@
 | 21 | [upgradeable-nft-market-21](upgradeable-nft-market-21/README.md) | UUPS 可升级 ERC721 / NFTMarket、升级状态保留、EIP-712 离线签名与 nonce、测试日志及部署/升级脚本 |
 | 22 | [vault-22](vault-22/README.md) | Vault CTF：delegatecall 存储碰撞、ABI 编码、owner 接管与提款重入 |
 | 23 | [cre-project-23](cre-project-23/README.md) | Chainlink CRE Cron：按阈值自动调用 TokenBank `withdrawhalf` |
+| 24 | [vesting-24](vesting-24/README.md) | ERC20 Vesting：12 个月 Cliff、24 期月度解锁、Foundry 时间模拟与本地部署 |
 
 `tokenbankv2-08` 沿用历史目录名，目前用于 NFTMarket；TokenBank 的前后端已经独立到 `tokenbank-fullstack-13`。
 
