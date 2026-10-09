@@ -34,17 +34,21 @@ export type OperationConfig = {
   confirmations: bigint
 }
 const cookieName = 'tokenbank_session'
+/** 把会话令牌转为哈希供数据库比对，查询库表不能直接拿到可使用的 Cookie。 */
 const digest = (value: string) =>
   createHash('sha256').update(value).digest('hex')
+/** 检查外部输入确实是非零的 32 字节十六进制值，格式正确仍不等于存在真实交易。 */
 const hash = (value: unknown): value is Hash =>
   typeof value === 'string' &&
   /^0x[0-9a-f]{64}$/i.test(value) &&
   value !== zeroHash
+/** 先把未知请求收窄为普通对象，再由各路由校验自己的字段。 */
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new OperationError(400, 'INVALID_INPUT', '请求内容无效')
   return value as Record<string, unknown>
 }
+/** 把身份验证、意图登记、交易线索和链上核实串起来；该服务不会替用户持私钥或发送交易。 */
 export function createOperationsRouter(
   db: Pool,
   rpc: PublicClient,
@@ -52,6 +56,7 @@ export function createOperationsRouter(
 ) {
   const router = Router()
   const origin = new URL(config.publicOrigin)
+  // 写请求先核对本站 Origin 和 JSON 类型，再进入认证或业务路由，避免跨站请求借用 Cookie。
   router.use(
     (req, res, next) => {
       if (!/^\/(auth|operations)(\/|$)/.test(req.path)) return next('router')
@@ -65,6 +70,7 @@ export function createOperationsRouter(
     },
     json({ limit: '8kb' }),
   )
+  /** 为本次钱包登录发放随机数和本站域名，钱包签名的对象由这一步确定。 */
   router.post('/auth/challenge', async (req, res) => {
     const { address } = object(req.body)
     if (
@@ -82,6 +88,7 @@ export function createOperationsRouter(
       chainId: config.chainId,
     })
   })
+  /** 验证地址、域名、网络、时效和签名，再消费随机数并设置仅服务端可读的 Cookie。 */
   router.post('/auth/verify', async (req, res) => {
     const { message, signature } = object(req.body)
     if (
@@ -122,6 +129,7 @@ export function createOperationsRouter(
     )
     res.json({ address: challenge.address, chainId: config.chainId })
   })
+  /** 后续接口都先从有效会话取账户，不能相信请求体里自报的 account。 */
   router.use(async (req, res, next) => {
     const session = req
       .get('cookie')
@@ -134,9 +142,11 @@ export function createOperationsRouter(
     res.locals.account = await sessionAccount(db, digest(session))
     next()
   })
+  /** 让前端判断已有登录能否复用；这里只返回身份，不要求再次签名。 */
   router.get('/auth/session', (_req, res) =>
     res.json({ address: res.locals.account, chainId: config.chainId }),
   )
+  /** 用 Idempotency-Key 登记同一笔业务意图；HTTP 成功只说明已登记，链上资产尚未因此变化。 */
   router.post('/operations', async (req, res) => {
     const body = object(req.body)
     const operationId = req.get('Idempotency-Key')
@@ -170,6 +180,7 @@ export function createOperationsRouter(
     )
     res.json(operation)
   })
+  /** 把钱包返回的交易哈希记作线索，账户归属取会话，最终结果留给查询接口核实。 */
   router.post('/operations/:id/transactions', async (req, res) => {
     const operation = await getOperation(
       db,
@@ -186,6 +197,7 @@ export function createOperationsRouter(
     )
     res.json({ recorded: true })
   })
+  /** 每次重新读取规范链并保存本次核实结果，不能用数据库中的旧 confirmed 掩盖链重组。 */
   router.get('/operations/:id', async (req, res) => {
     const operation = await getOperation(
       db,

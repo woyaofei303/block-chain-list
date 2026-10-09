@@ -16,6 +16,7 @@ import {
 import { fullJitterDelay } from "../../../shared/retry"
 import type { SendMessageRequest, SendMessageResult } from "../contracts"
 
+/** 发送或重试一条消息，HTTP 自动重试沿用 requestKey；成功后刷新占位消息以启动 SSE 订阅。 */
 export function useSendMessage() {
   const queryClient = useQueryClient()
 

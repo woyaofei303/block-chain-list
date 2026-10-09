@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { loadConfig } from '../src/config.ts'
 
+// 只传入测试配置对象，逐项检查默认值与边界，不读取开发者的环境文件。
 test('独立项目默认使用本地链，要求明确指定 Token，并拒绝非法配置', () => {
   const token = `0x${'1'.repeat(40)}`
   const defaults = loadConfig({ TOKEN_ADDRESS: token })

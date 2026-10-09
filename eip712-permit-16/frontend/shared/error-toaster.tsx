@@ -12,6 +12,7 @@ export function ErrorToaster() {
   useEffect(() => {
     if (!current) return
     const id = `request-error-${current.id}`
+    /** 把提示的编号交回队列，重复的关闭回调不会误删下一条。 */
     const close = () => errors.dismiss(current.id)
     toast.error(current.error.message, {
       id,

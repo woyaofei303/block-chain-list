@@ -39,6 +39,7 @@ export const explorerUrl =
   process.env.NEXT_PUBLIC_EXPLORER_URL ??
   ("blockExplorers" in targetChain ? (targetChain.blockExplorers?.default.url ?? "") : "")
 
+/** 仅在配置了 HTTP(S) 浏览器地址时生成链接；本地链无浏览器时返回 undefined，界面展示原值。 */
 export function explorerLink(kind: "address" | "tx", value: string) {
   return /^https?:\/\//.test(explorerUrl)
     ? `${explorerUrl.replace(/\/$/, "")}/${kind}/${value}`

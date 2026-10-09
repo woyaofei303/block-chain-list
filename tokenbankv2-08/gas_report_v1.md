@@ -1,5 +1,13 @@
 # NFTMarket Gas Report v1 — 优化前
 
+## 第一次读 Gas 报告，先看什么
+
+先完成 [市场教程](README.md)，知道一笔上架和购买各做了什么，再看成本。Gas 是计算资源数量，实际 ETH 手续费还要乘交易当时的 Gas 单价，不能把这里的数字直接当钱。
+
+本篇是冻结的优化前基线。先读统计口径，再选一个具体场景，最后到 [v2 对照](gas_report_v2.md) 比较同一场景。比如“首次上架”应和另一版首次上架比，不能拿它和购买的均值比。
+
+`[PASS]` 后的 Gas 可能包含准备和断言，函数报告与独立交易成本也有不同口径。下文保留原始输出与来源哈希，属于 2026-09-28 的记录；本次文档重构没有重新测量。
+
 冻结基线来自提交 `f107434e950dce5984ca3b3e4c1dba751e1c2a84` 的 `tokenbankv2-08/src/NFTMarket.sol`。
 仅重命名为 `NFTMarketV1`、调整 import 相对路径并补充中文注释；已将去注释/空白后的源码与原文件比较，业务代码一致。
 
@@ -20,7 +28,7 @@
 - 普通报价为 100 BERC20（`100 ether` 个最小单位）；普通购买场景先改价为 200 BERC20；Token ID=7。扩展报价依次使用 `2^96-1`、`2^256-1`，然后改回普通报价。
 - Deployment Size 含 64 字节构造参数；`forge build --sizes` 的 Initcode Size 不含这些参数。
 
-计量方法参考：[Foundry Gas Reports](https://getfoundry.sh/forge/gas-tracking/gas-reports/)；本报告数值全部来自本次本地运行，不代表 Base 主网实际费用。
+计量方法参考：[Foundry Gas Reports](https://getfoundry.sh/forge/gas-tracking/gas-reports/)；本报告数值全部来自报告日期的本地运行，不代表 Base 主网实际费用。
 
 ## 复现命令
 

@@ -6,6 +6,7 @@ const transferEvent = parseAbiItem(
   'event Transfer(address indexed from, address indexed to, uint256 value)',
 )
 
+/** 锁住该代币的扫描游标，确认区块按批写入；明细与进度一起提交，失败回滚后可安全重扫。 */
 export async function scanOnce(db, rpc, config) {
   const { chainId, tokenAddress, startBlock, confirmations, batchSize } = config
   // 所有进度、删除和查询都按“链 + 代币”隔离，地址统一小写便于匹配。
@@ -52,7 +53,7 @@ export async function scanOnce(db, rpc, config) {
           (await rpc.getBlock({ blockNumber: fromBlock - 1n })).hash !==
             progress.block_hash)
       ) {
-        // ponytail: 作业数据量小，重组后从部署块重扫；大规模索引再保存分段检查点。
+        // shortcut: 作业数据量小，重组后从部署块重扫；大规模索引再保存分段检查点。
         await client.query(
           'DELETE FROM transfers WHERE chain_id = $1 AND token_address = $2',
           key,

@@ -33,6 +33,7 @@ function validateTransferQuery(request, response, next) {
   next()
 }
 
+/** 验证地址和分页参数后只查数据库；金额展示使用启动时读到的代币精度，查询本身不触发补扫。 */
 export function createTransfersRouter(db, config, token) {
   const router = Router()
   router

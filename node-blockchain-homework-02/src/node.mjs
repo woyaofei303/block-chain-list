@@ -7,10 +7,12 @@ import { Blockchain } from "./blockchain.mjs"
 const MAX_BODY_BYTES = 64 * 1024
 const MESSAGE_TYPES = new Set(["HELLO", "TRANSACTION", "BLOCK", "GET_CHAIN", "CHAIN"])
 
+/** 网络消息先确认是对象，再读取 type 和 data，防止无效输入进入状态处理。 */
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+/** 启动前检查邻居地址使用 WebSocket 协议；地址格式合法仍不保证对端在线。 */
 function validatePeerUrls(peers) {
   for (const peer of peers) {
     const url = new URL(peer)
@@ -20,6 +22,7 @@ function validatePeerUrls(peers) {
   }
 }
 
+/** 把一次 HTTP 结果序列化并结束响应，按 UTF-8 字节数设置长度。 */
 function sendJson(response, statusCode, value) {
   const body = JSON.stringify(value)
   response.writeHead(statusCode, {
@@ -29,6 +32,7 @@ function sendJson(response, statusCode, value) {
   response.end(body)
 }
 
+/** 分块读取并限制请求体为 64 KiB，拒绝超长或非法 JSON，尚不处理业务字段。 */
 async function readJson(request) {
   const chunks = []
   let size = 0
@@ -44,6 +48,7 @@ async function readJson(request) {
   }
 }
 
+/** 组装独立节点；创建后尚未监听端口，调用 start 才能收请求，stop 负责释放连接。 */
 export function createNode({ name = "node", port = 0, difficulty, logger, peers = [] } = {}) {
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new RangeError("端口必须是 0 到 65535 的整数")
@@ -52,11 +57,13 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
   let httpUrl
   let p2pUrl
   let startPromise
+  /** 日志失败不能中断验块或关机流程，因此同时隔离同步异常和异步拒绝。 */
   const log = (method, value) => {
     try {
       void Promise.resolve(logger?.[method]?.(value)).catch(() => {})
     } catch {}
   }
+  /** 记录拒绝原因供观察；无效邻居消息不会直接终止整个节点。 */
   const rejectP2pMessage = (reason) => log("error", `拒绝 P2P 消息：${reason}`)
   const sockets = new Set()
   const pendingSockets = new Set()
@@ -82,13 +89,13 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
         return sendJson(response, 200, { transactions: state.mempool })
       }
       if (request.method === "POST" && url.pathname === "/transactions") {
-        // 全流程 3：校验并创建交易 → 加入 mempool → 广播 TRANSACTION。
+        // 收到交易记录后：校验并创建交易 → 加入 mempool → 广播 TRANSACTION。
         const transaction = state.createAndAddTransaction(await readJson(request))
         broadcast("TRANSACTION", { transaction })
         return sendJson(response, 201, { transaction })
       }
       if (request.method === "POST" && url.pathname === "/mine") {
-        // 全流程 4：打包 mempool 并完成 PoW → 追加本地链 → 广播 BLOCK。
+        // 收到挖矿请求后：打包 mempool 并完成 PoW → 追加本地链 → 广播 BLOCK。
         const { block, elapsedMs } = state.minePendingTransactions()
         seenBlocks.add(block.hash)
         broadcast("BLOCK", { block })
@@ -106,6 +113,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
   })
   let webSocketServer
 
+  /** 只向已打开的连接发消息；连接中断时记录错误，由后续同步补齐状态。 */
   function send(socket, type, data = {}) {
     try {
       if (socket.readyState === WebSocket.OPEN) {
@@ -116,14 +124,15 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
     }
   }
 
+  /** 通知所有已连接邻居，但跳过消息来源，避免立刻原路回传。 */
   function broadcast(type, data, excludedSocket) {
     for (const socket of sockets) {
       if (socket !== excludedSocket) send(socket, type, data)
     }
   }
 
+  /** 先验证消息外形，再按类型交给 Blockchain；网络层不能跳过链的内容校验。 */
   function handleMessage(socket, raw) {
-    // 全流程 5-6：P2P 消息从这里进入；边界校验通过后才交给共识层修改状态。
     let message
     try {
       message = JSON.parse(raw.toString())
@@ -211,8 +220,8 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
     }
   }
 
+  /** 接管已连通的 socket，注册消息和关闭回调，再发送本节点链头进行握手。 */
   function attachSocket(socket) {
-    // 全流程 5：连接建立即发送 HELLO；链头不同时由消息处理流程触发完整链同步。
     sockets.add(socket)
     pendingSockets.delete(socket)
     socket.once("close", () => sockets.delete(socket))
@@ -225,6 +234,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
     })
   }
 
+  /** 让同一 HTTP 服务接收 /p2p WebSocket 连接；它与查询接口共用端口。 */
   function createWebSocketServer() {
     const nextServer = new WebSocketServer({ server, path: "/p2p" })
     nextServer.on("connection", attachSocket)
@@ -234,12 +244,15 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
 
   return {
     state,
+    /** 监听完成后返回实际 HTTP 地址；停止后清空，避免继续使用过期端口。 */
     get httpUrl() {
       return httpUrl
     },
+    /** 返回其他节点连接本节点的 /p2p 地址，只有启动完成后才有值。 */
     get p2pUrl() {
       return p2pUrl
     },
+    /** 异步拨号邻居；打开前保存在待连接集合，停止节点时这类连接也要关闭。 */
     connect(peerUrl) {
       let socket
       try {
@@ -249,6 +262,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
         return
       }
       pendingSockets.add(socket)
+      /** 拨号尚未成功时也要接住错误，避免无人监听的 error 事件使进程退出。 */
       const onPendingError = (error) => log("error", error)
       socket.once("open", () => {
         socket.off("error", onPendingError)
@@ -258,19 +272,22 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
       socket.once("error", onPendingError)
       return socket
     },
+    /** 等待监听成功后再建立 P2P 服务；同时调用 start 时复用同一次启动等待。 */
     async start() {
-      // 全流程 2：先监听 HTTP，再把同一个 server 升级为 /p2p WebSocket 服务。
       if (server.listening) return
       if (startPromise) return startPromise
       startPromise = new Promise((resolve, reject) => {
+        /** 启动成功或失败都移除临时监听器，避免下次启动继续触发旧回调。 */
         const cleanup = () => {
           server.off("error", onError)
           server.off("listening", onListening)
         }
+        /** 把监听失败交回 start 调用者，并移除另一条尚未触发的监听器。 */
         const onError = (error) => {
           cleanup()
           reject(error)
         }
+        /** 只有系统确认端口已监听才结束等待，随后才能取得实际分配的端口号。 */
         const onListening = () => {
           cleanup()
           resolve()
@@ -296,8 +313,8 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
       log("info", `HTTP 节点 ${name} 已启动：${httpUrl}`)
       for (const peerUrl of peers) this.connect(peerUrl)
     },
+    /** 先断开已连接与正在拨号的 socket，再等待服务关闭；只释放本节点创建的资源。 */
     async stop() {
-      // 全流程 7：先断开 P2P，再关闭 WebSocket/HTTP，最后清空对外暴露的地址。
       for (const socket of [...sockets, ...pendingSockets]) socket.terminate()
       const closingWebSocketServer = webSocketServer
       webSocketServer = undefined
@@ -318,7 +335,7 @@ export function createNode({ name = "node", port = 0, difficulty, logger, peers 
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    // 全流程 2，节点进程入口：解析 CLI → 创建节点 → 启动服务 → 打印 READY → 等待退出信号。
+    // 从命令行直接运行时：解析 CLI → 创建节点 → 启动服务 → 打印 READY → 等待退出信号。
     const { values } = parseArgs({
       options: {
         name: { type: "string", default: "node" },
@@ -340,6 +357,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     await node.start()
     console.log(`[${values.name}] READY ${node.httpUrl} p2p=${node.p2pUrl}`)
 
+    /** 接到退出信号后等待节点释放资源；关闭失败时以非零退出码提示调用方。 */
     const shutdown = async () => {
       try {
         await node.stop()

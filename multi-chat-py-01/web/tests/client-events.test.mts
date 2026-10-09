@@ -4,6 +4,7 @@ import test from "node:test"
 import type { ChatMessage } from "../domains/conversation/model.ts"
 import { applyGenerationEvent } from "../features/chat/client/apply-generation-event.ts"
 
+// 模拟断线后重放已收到的事件，检查消息正文没有重复拼接。
 test("ignores replayed stream events already applied by the client", () => {
   const message: ChatMessage = {
     id: "message-1",

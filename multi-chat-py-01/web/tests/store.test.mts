@@ -6,6 +6,7 @@ import test from "node:test"
 
 import { createConversationStore } from "../domains/conversation/server/store.ts"
 
+// 使用临时目录导入旧历史，再重复初始化，检查消息不会被导入两次。
 test("imports valid Python history exactly once", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "multi-chat-"))
   const storePath = path.join(directory, "chat-store.json")
@@ -48,6 +49,7 @@ test("imports valid Python history exactly once", async () => {
   )
 })
 
+// 重复 requestKey 应返回同一任务，历史中只能有一对用户消息和助手占位。
 test("reusing a request key returns the existing turn", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "multi-chat-"))
   let nextId = 0
@@ -78,6 +80,7 @@ test("reusing a request key returns the existing turn", async () => {
   )
 })
 
+// 模拟半截回答后重试，检查替换原助手位置并重置进度，而不是附加第二条答案。
 test("retry replaces a partial assistant answer instead of appending", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "multi-chat-"))
   let nextId = 0
@@ -120,6 +123,7 @@ test("retry replaces a partial assistant answer instead of appending", async () 
   })
 })
 
+// 当前会话已有生成时重试旧回答，必须拒绝，防止两条流争用同一会话状态。
 test("does not retry an old answer while the conversation is generating", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "multi-chat-"))
   let nextId = 0
@@ -152,7 +156,8 @@ test("does not retry an old answer while the conversation is generating", async 
   )
 })
 
-test("marks an interrupted generation as failed after restart", async () => {
+// 两个会话都在生成时退出，重启后都应保留消息并解除“生成中”，而不是只恢复第一个。
+test("marks every interrupted generation as failed after restart", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "multi-chat-"))
   const storePath = path.join(directory, "chat-store.json")
   let nextId = 0
@@ -170,8 +175,22 @@ test("marks an interrupted generation as failed after restart", async () => {
     model: "test-model",
   })
 
+  const another = await store.createConversation()
+  await store.addUserTurn(another.id, {
+    content: "这条消息也要恢复",
+    requestKey: "request-2",
+    model: "test-model",
+  })
+
   const restarted = createConversationStore(options)
   const recovered = await restarted.getConversation(conversation.id)
+  const anotherRecovered = await restarted.getConversation(another.id)
 
   assert.equal(recovered?.messages[1]?.status, "failed")
+  assert.equal(anotherRecovered?.messages[1]?.status, "failed")
+  assert.equal(anotherRecovered?.messages[0]?.content, "这条消息也要恢复")
+
+  // 直接读磁盘，确认修复也已保存，不借助另一次初始化修复来掩盖漏写。
+  const persisted = JSON.parse(await readFile(storePath, "utf8"))
+  assert.equal(persisted.conversations[1].messages[1].status, "failed")
 })

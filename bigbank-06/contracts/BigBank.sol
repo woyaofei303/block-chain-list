@@ -12,6 +12,7 @@ contract BigBank is Bank {
 
     event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
 
+    /// @dev 门槛按每一笔计算：存过很多钱也不能再存 0.001 ETH 或更少。
     modifier minimumDeposit() {
         if (msg.value <= 0.001 ether) {
             revert DepositTooSmall();

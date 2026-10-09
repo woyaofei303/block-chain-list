@@ -19,6 +19,7 @@ contract NFTMarketTest is Test {
         "Whitelist(address buyer,address seller,uint256 tokenId,uint256 price,uint256 nonce,uint256 deadline)"
     );
 
+    /// @notice 准备报价 100 JUL 的 NFT #0，分别授予市场 NFT 转移权和买家的付款额度。
     function setUp() public {
         seller = makeAddr("seller");
         buyer = makeAddr("buyer");
@@ -36,6 +37,7 @@ contract NFTMarketTest is Test {
         token.approve(address(market), PRICE);
     }
 
+    /// @notice 用项目方的虚拟测试密钥给指定买家签发资格，域中包含当前链与市场地址。
     function signWhitelist(address account, uint256 nonce, uint256 deadline) internal view returns (bytes memory) {
         bytes32 domain = keccak256(
             abi.encode(
@@ -55,6 +57,7 @@ contract NFTMarketTest is Test {
         return abi.encodePacked(r, s, v);
     }
 
+    /// @notice 买家付 100 JUL、卖家交付 NFT；市场不留付款，旧挂单清除，买家 nonce 增加一次。
     function testPermitBuyTransfersPaymentAndNFT() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes memory signature = signWhitelist(buyer, 0, deadline);
@@ -76,6 +79,7 @@ contract NFTMarketTest is Test {
         console2.log("After: seller JUL", token.balanceOf(seller));
     }
 
+    /// @notice 失败后同时检查 NFT、双方付款余额、挂单和 nonce，确认没有半笔成交。
     function assertUnchanged() internal view {
         assertEq(nft.ownerOf(0), seller);
         assertEq(token.balanceOf(buyer), 1_000 ether);
@@ -86,6 +90,7 @@ contract NFTMarketTest is Test {
         assertEq(price, PRICE);
     }
 
+    /// @notice 换买家、冒充签发人或提交畸形签名都不能买走 NFT，原挂单仍保留。
     function testOtherBuyerWrongIssuerAndMalformedSignatureReject() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes memory signature = signWhitelist(buyer, 0, deadline);
@@ -102,6 +107,7 @@ contract NFTMarketTest is Test {
         assertUnchanged();
     }
 
+    /// @notice 期限、链和市场是签名有效范围；不能把同一资格拿到另一环境复用。
     function testExpiredWrongChainAndWrongMarketReject() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes memory signature = signWhitelist(buyer, 0, deadline);
@@ -123,6 +129,7 @@ contract NFTMarketTest is Test {
         assertUnchanged();
     }
 
+    /// @notice 签名后改价或换 NFT 编号应失败，买家的资格只针对原始交易条件。
     function testChangedPriceOrTokenIdReject() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes memory signature = signWhitelist(buyer, 0, deadline);
@@ -144,6 +151,7 @@ contract NFTMarketTest is Test {
         assertEq(market.nonces(buyer), 0);
     }
 
+    /// @notice 成交消耗买家 nonce；同一 NFT 后续再上架时，旧资格签名不能再次使用。
     function testReplayAfterRelistingRejects() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes memory signature = signWhitelist(buyer, 0, deadline);
@@ -164,6 +172,7 @@ contract NFTMarketTest is Test {
         assertEq(nft.ownerOf(0), seller);
     }
 
+    /// @notice 付款失败或 NFT 无法交付时，前面的 nonce 和挂单修改都必须撤销。
     function testPaymentOrNFTFailureRollsBackNonceListingAndBalances() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes memory signature = signWhitelist(buyer, 0, deadline);
@@ -183,6 +192,7 @@ contract NFTMarketTest is Test {
         assertEq(token.allowance(buyer, address(market)), PRICE);
     }
 
+    /// @notice 分别检查铸造、上架和取消由谁执行，持有支付币并不自动取得卖家权限。
     function testListingMintAndCancelPermissions() public {
         vm.startPrank(buyer);
         vm.expectRevert();
@@ -205,6 +215,7 @@ contract NFTMarketTest is Test {
         market.permitBuy(0, block.timestamp + 1 hours, hex"");
     }
 
+    /// @notice 继承来的普通购买与转账回调都必须拒绝，不能绕过签名购买入口。
     function testInheritedPurchaseEntrypointsCannotBypassWhitelist() public {
         vm.startPrank(buyer);
         vm.expectRevert("Whitelist required");

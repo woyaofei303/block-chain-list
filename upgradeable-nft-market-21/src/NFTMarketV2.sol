@@ -51,6 +51,7 @@ contract NFTMarketV2 is NFTMarketV1, EIP712Upgradeable {
 
     /// @notice 卖家递增指定 NFT 的 nonce，取消该编号所有尚未成交的当前签名报价。
     function cancelSignedListing(uint256 tokenId) external {
+        // 例如 NFT #2 的旧报价写着 nonce=0，取消后变成 1，旧签名便无法再成交。
         uint256 newNonce = ++nonces[msg.sender][tokenId];
         emit SignedListingCancelled(msg.sender, tokenId, newNonce);
     }

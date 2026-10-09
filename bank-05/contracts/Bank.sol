@@ -75,6 +75,7 @@ contract Bank {
 
     // 本次只有存款人的金额增加，其他人的相对顺序不变，只需调整这个地址。
     function _updateTop3() private {
+        // 例如榜单为 A:5、B:3、C:1，C 再存 3 后累计为 4，只需移到 B 前面。
         uint256 index;
         // 先查找已有位置，避免同一地址重复入榜；index == 3 表示不在榜内。
         while (index < 3 && top3[index] != msg.sender) {

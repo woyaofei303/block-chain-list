@@ -22,17 +22,21 @@ contract MultiSigWallet {
     event ConfirmTransaction(address indexed owner, uint256 indexed txId);
     event ExecuteTransaction(address indexed executor, uint256 indexed txId);
 
+    /// @notice 只允许固定持有人提交和确认；出钱给钱包不会自动取得持有人身份。
     modifier onlyOwner() {
         require(isOwner[msg.sender], "Not owner");
         _;
     }
 
+    /// @notice 只允许处理存在且未执行的提案；编号来自提交时返回的 txId。
     modifier pendingTransaction(uint256 txId) {
         require(txId < transactions.length, "Transaction does not exist");
         require(!transactions[txId].executed, "Transaction already executed");
         _;
     }
 
+    /// @notice 确定持有人和票数门槛；拒绝重复地址，否则同一人可能被当作多人。
+    /// 例如三人两票：先提交，再由两人分别确认，最后单独发起执行。
     constructor(address[] memory initialOwners, uint256 requiredConfirmations) {
         require(initialOwners.length > 0, "Owners required");
         require(
@@ -49,6 +53,7 @@ contract MultiSigWallet {
         required = requiredConfirmations;
     }
 
+    /// @notice 接收任何账户转入的 ETH；充值只增加钱包资产，不创建或批准提案。
     receive() external payable {
         emit Deposit(msg.sender, msg.value);
     }
@@ -86,10 +91,12 @@ contract MultiSigWallet {
         emit ExecuteTransaction(msg.sender, txId);
     }
 
+    /// @notice 一次返回全部持有人；这里只读取名单，不能用返回的副本修改权限。
     function getOwners() external view returns (address[] memory) {
         return owners;
     }
 
+    /// @notice 返回已提交的提案总数，包括已执行项；下一个新提案以此数作为编号。
     function getTransactionCount() external view returns (uint256) {
         return transactions.length;
     }

@@ -65,6 +65,7 @@ contract LinearVesting {
             return totalAllocation;
         }
 
+        // 配额若为 2400 个最小单位：第 12 个月仍为 0，第 13 个月为 100，第 14 个月为 200。
         uint256 elapsedMonths = (timestamp - vestingStart) / MONTH;
         // 按累计比例只舍入一次，mulDiv 避免大配额的中间乘法溢出；最后一期归还全部尾差。
         return Math.mulDiv(totalAllocation, elapsedMonths, 24);

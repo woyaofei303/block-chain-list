@@ -2,7 +2,9 @@
 pragma solidity 0.8.24;
 
 interface IERC20 {
+    /// @notice 把调用者持有的币转给 to；银行提款时调用它把币还给用户。
     function transfer(address to, uint256 amount) external returns (bool);
+    /// @notice 按 from 给调用者的额度转币；存款时调用者是银行，from 是用户。
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
@@ -16,6 +18,7 @@ contract TokenBank {
     event Deposited(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
 
+    /// @notice 固定银行接收的代币；先检查目标有代码，避免把钱包地址误当代币。
     constructor(address tokenAddress) {
         require(tokenAddress.code.length > 0, "Invalid token");
         token = IERC20(tokenAddress);
@@ -30,6 +33,7 @@ contract TokenBank {
         emit Deposited(msg.sender, amount);
     }
 
+    /// @notice 从个人可提余额扣除 amount，再归还代币；转币失败时扣账也回滚。
     function withdraw(uint256 amount) external {
         require(amount > 0, "Amount must be positive");
         // 只能提取调用者自己的存款。

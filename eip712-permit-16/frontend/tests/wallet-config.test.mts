@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
 import { test } from "node:test"
 
+// 隔离环境变量后重新加载配置，检查默认本地链不会悄悄变成公共网络。
 test("未配置网络时使用 Foundry，Sepolia 和 Base 必须显式选择", () => {
   const configUrl = new URL("../domains/wallet/config.ts", import.meta.url).href
   const script = `const { targetChain } = await import(${JSON.stringify(configUrl)}); console.log(targetChain.id)`

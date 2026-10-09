@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { loadConfig } from '../src/config.mjs'
 
+// 用显式测试配置覆盖边界值，不读取真实 RPC 凭据。
 test('配置保留现有默认值，正确转换覆盖值，并尽早拒绝非法输入', () => {
   const defaults = loadConfig({})
   assert.equal(defaults.chainId, 11155111)

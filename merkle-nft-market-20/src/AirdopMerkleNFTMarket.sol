@@ -95,7 +95,7 @@ contract AirdopMerkleNFTMarket is Multicall, ReentrancyGuardTransient {
         require(isWhitelisted(msg.sender, proof), "Not whitelisted");
         (address seller, uint256 price) = listings(tokenId);
         require(seller != address(0), "NFT not listed");
-        // 避免 price+1 溢出；奇数最小单位向上取整，原价 1 不会变为免费。
+        // 按最小单位五折：100 付 50，101 付 51；拆开计算避免 price+1 溢出。
         uint256 paid = price / 2 + price % 2;
         require(paid <= maxPayment, "Price exceeds maximum");
 

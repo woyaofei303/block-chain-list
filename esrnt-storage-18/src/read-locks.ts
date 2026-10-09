@@ -44,6 +44,7 @@ export async function readLocks(
   const base = BigInt(keccak256(toHex(0n, { size: 32 })))
   const locks: LockInfo[] = []
   for (let i = 0n; i < length; i++) {
+    // 每项占两槽：第 0 项读 base/base+1，第 1 项读 base+2/base+3。
     const slot = base + i * 2n
     const [packed, amount] = await Promise.all([
       readWord(slot),

@@ -7,10 +7,12 @@ const schema = await readFile(
   'utf8',
 )
 
+/** 执行建表语句，重复启动保留已有转账与扫描进度，不清空学习数据。 */
 export async function initDatabase(db: Pick<Pool, 'query'>) {
   await db.query(schema)
 }
 
+/** 按账户分页查已入库的收支，同时返回扫描到哪里；没有明细也可能只是索引还没追上链。 */
 export async function findTransfers(
   db: Pick<Pool, 'query'>,
   { chainId, tokenAddress }: TransferScope,

@@ -46,6 +46,7 @@ type ScanProgress = {
   block_hash: string | null
 }
 
+/** 锁住当前链与代币的扫描进度，按批写入确认区块；明细和游标同事务提交，出错整批回滚后可重扫。 */
 export async function scanOnce(
   db: Pool,
   rpc: ScannerRpc,
@@ -96,7 +97,7 @@ export async function scanOnce(
           (await rpc.getBlock({ blockNumber: fromBlock - 1n })).hash !==
             progress.block_hash)
       ) {
-        // ponytail: 作业数据量小，重组后从部署块重扫；大规模索引再保存分段检查点。
+        // shortcut: 作业数据量小，重组后从部署块重扫；大规模索引再保存分段检查点。
         await client.query(
           'DELETE FROM transfers WHERE chain_id = $1 AND token_address = $2',
           key,

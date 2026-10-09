@@ -1,103 +1,89 @@
-# Token Bank：独立全栈练习
+# 13 · 从网页存入一笔 Token：全栈如何合作
 
-本目录保留普通授权存取款的历史练习。复用本项目实现的 Permit 版本已统一归纳到 [eip712-permit-16](../eip712-permit-16/README.md)，签名存款、NFT 白名单及完整启动命令均在该目录维护。
+这个项目把 [07 的代币银行](../tokenbank-07/README.md) 与 [12 的历史索引](../erc20-event-indexer-12/README.md) 接成一个可操作的网页。完成后，你应能解释一笔存款经过哪些程序、资产在哪里、失败后从哪里继续。
 
-从代币与银行合约，到钱包存取款、PostgreSQL 转账索引、REST API 和页面展示，完整流程都在本项目内。先读 [AGENTS.md](AGENTS.md)，实际操作按 [WALKTHROUGH.md](WALKTHROUGH.md) 顺序执行。
+## 用 100 枚代币走完一次闭环
 
-本项目承接 2026-09-20 新增的 Token Bank 页面与联调流程。`tokenbankv2-08` 保留原 NFTMarket 合约及事件监听；`tokenbank-07` 和 `erc20-event-indexer-12` 保留各自练习。本项目拥有自己的合约和后端实现，运行时无需进入这些兄弟目录。
+假设 Alice 钱包有 100 BERC20，个人存款为 0。她在页面输入 10，先登录、授权，再存款。成功后钱包 90、个人存款 10、银行实际资产 10；取出 4 后分别是 94、6、6。
 
-新请求与提交链路见 [REQUESTS.md](REQUESTS.md)：HTTP 并发 6、Toast 总容量 3、SIWE 登录、同编号重试及终止恢复。新页面向 `IdempotentTokenBank` 提交，历史 `TokenBank` 仅保留读取与旧部署。
+如果 Bob 也存入 20，Alice 可提仍是 6，银行总资产则是 26。页面连接谁，就查询谁的个人账本；切账户不会创建另一家银行。
 
-## 按职责读代码
+三个数据不要混淆：
 
-```text
-contracts/
-  src/BaseERC20.sol          代币发行、余额、授权和转账
-  src/TokenBank.sol          历史版银行，保留旧部署
-  src/IdempotentTokenBank.sol  新版存取款、操作去重与防重入
-  test/TokenBank.t.sol       合约的存取款与回滚检查
-  foundry.toml              Solidity 0.8.24 / Shanghai，无第三方合约库
-database/
-  schema.sql                转账明细、扫描检查点和查询索引
-  verify.sql                只读核对进度、明细和重复记录
-backend/
-  src/main.ts              配置、RPC、数据库、HTTP 与进程生命周期
-  src/config.ts            环境变量校验
-  src/app.ts               HTTP 入口和统一错误响应
-  src/operations/          认证、幂等记录和链上结果核实
-  src/transfers/indexer.ts 扫块、事务、幂等写入、检查点和重组恢复
-  src/transfers/repository.ts  加载表结构与参数化查询
-  src/transfers/router.ts  转账查询参数校验与金额格式化
-  src/transfers/types.ts   扫描、查询与响应的共享领域类型
-frontend/
-  app/                     页面、Provider、同源 /api/transfers 入口
-  features/bank-dashboard.tsx  页面布局、导航与账户工作区切换
-  features/bank-workspace.tsx  余额查询、交易提交与终止恢复，组合领域组件
-  domains/bank/*.tsx        金额输入、资产展示与银行设置弹窗
-  domains/bank/client.ts    精确金额、会话校验、合约读写
-  domains/wallet/           钱包发现、连接、账户/网络与链配置
-  domains/transfers/        记录响应校验、展示与分页
-  domains/operations/      操作持久化、SIWE 登录与恢复编排
-  shared/request.ts        fetch、并发队列、超时与取消
-  shared/error-queue.ts     合并、优先级、容量与故障抑制
-  shared/error-toaster.tsx  Sonner 单条显示
-  shared/query-client.ts   统一最终失败处理与查询重试
-  shared/web3.ts            地址显示与钱包错误提示
-```
+- 钱包余额：`Token.balanceOf(Alice)`，还在 Alice 地址上的代币。
+- 个人银行存款：`Bank.balances(Alice)`，Alice 可取的金额。
+- 银行总资产：`Token.balanceOf(Bank)`，所有人存入及直接转入的代币。
 
-合约是余额和可提额度的权威来源；数据库是事件查询索引，不承担提款授权。银行、钱包、转账领域各自保留规则，跨领域页面编排集中在 `features/`。
+## 先理解谁负责什么
 
 ```mermaid
-flowchart LR
-  UI[Next.js 页面] --> Wallet[浏览器钱包]
-  Wallet --> Bank[TokenBank / BaseERC20]
-  Bank -->|Transfer 事件| Indexer[后端转账索引]
-  Indexer --> DB[(PostgreSQL)]
-  UI --> Proxy[Next.js /api/transfers]
-  Proxy --> API[Express /transfers]
-  API --> DB
+sequenceDiagram
+  participant U as 页面与钱包
+  participant B as 银行合约
+  participant A as 后端
+  participant D as 数据库
+  U->>A: 登录、登记操作编号
+  U->>B: 授权后存入10枚
+  B-->>U: 交易回执
+  A->>B: 核实编号和链上结果
+  A->>D: 保存操作结果、索引Transfer
+  U->>A: 查询历史
+  A-->>U: 返回已索引记录
 ```
 
-## 安装与环境
+链上合约保管资产并决定谁能取款；后端保存会话、核实操作并索引历史；数据库不能通过改一行记录就改变真实余额。页面余额和历史列表也可能在不同时间更新。
 
-需要 Node.js 24+、pnpm、npm、Foundry 和 PostgreSQL。以下命令从本项目根目录执行：
+## 第一次学习，先跑自动闭环
+
+需要 Node.js 24+、npm、pnpm、Foundry 和 PostgreSQL。从仓库根目录执行：
 
 ```bash
+cd tokenbank-fullstack-13
 npm --prefix backend ci
 pnpm --dir frontend install --frozen-lockfile
+forge test --root contracts
+pnpm --dir frontend test
 ```
 
-两套包管理器分别对应迁移前已有工具链，不混用锁文件。安装脚本接入仓库现有提交钩子；独立运行依赖本项目四个目录，开发钩子依赖父仓库。
-
-有昨天的链状态、配置和数据库时，先走 [恢复已有环境](WALKTHROUGH.md#0-继续使用上一轮数据)，不要重复部署或充值。新建隔离环境则走 [环境与端口](WALKTHROUGH.md#1-先确认环境与端口)，由本项目 `contracts/` 部署，使用新数据库并逐步核对。
-
-对应说明：
-
-- [前端：账户、金额、三种余额与钱包交互](frontend/README.md)
-- [后端：配置、索引和查询接口](backend/README.md)
-- [数据库：表结构、隔离和数据核对](database/README.md)
-
-## 验证
+准备好可连接的测试 PostgreSQL 后，再执行：
 
 ```bash
-forge fmt --root contracts --check
-forge build --root contracts
-forge test --root contracts
-npm --prefix backend run lint
-npm --prefix backend run format:check
-npm --prefix backend run typecheck
-npm --prefix backend test
 npm --prefix backend run test:integration
-pnpm --dir frontend lint
-pnpm --dir frontend format:check
-pnpm --dir frontend typecheck
-pnpm --dir frontend test
 pnpm --dir frontend test:integration
-pnpm --dir frontend build
 ```
 
-后端普通测试使用临时 PostgreSQL schema，默认连接本机 `postgres` 数据库；可通过 `PGDATABASE` 等标准变量指定可用测试数据库。`test:integration` 自动启动独立 Anvil，部署本项目合约，完成 `10.000000000000000001` 存款和 `4` 取款，验证 PostgreSQL、Express、前端代理、分页及重复扫描，最后清理测试节点和 schema。
+后端集成测试会启动独立 Anvil、部署本项目合约、存入 `10.000000000000000001`、取出 4，并核对数据库/API/前端代理；用随机 schema 隔离，结束清理。精确的小数用于确认金额没有经过浮点数损失。
 
-前端集成测试另验证拒签、账户/网络变化、超额提款及直接转币不记账。页面验收仍需按 WALKTHROUGH 执行，不能把程序接口测试当作浏览器操作证据。构建前先停止同目录的前端服务。
+2026-10-09 已通过 4 项合约、11 项前端、4 项后端测试及 2 项本地集成测试，并通过前后端 lint 和类型检查。接口集成通过也不等于已经用浏览器钱包完成验收。
 
-本地复习状态、日志和测试产物在仓库 `output-tdd/`，不提交到 Git。公共链操作需要具体授权；这里只读文档和运行本地测试不会授权新的公共链交易。
+## 再打开页面亲手操作
+
+按 [WALKTHROUGH](WALKTHROUGH.md) 执行。第一次创建隔离环境；如果已有学习记录，先走“继续使用上一轮数据”，保留链状态、配置和数据库。
+
+网页本身不会给钱包发测试币。钱包需要同一条本地链上的 ETH 支付模拟 Gas，以及本项目 Token 的余额。MetaMask 添加代币只让它显示已有资产，不会产生新币。
+
+两次“签名/确认”也可能不同：SIWE 是登录、证明你控制账户；ERC20 approve 是允许银行扣指定代币；deposit 才是实际存款。授权成功不能显示成存款成功。
+
+## 刷新或超时后为什么不能重新点一笔
+
+新银行 `IdempotentTokenBank` 要求每笔业务带 `operationId`（操作编号）。同账户、同编号、同参数重复执行只产生一次资金效果；同编号改金额会被拒绝，这叫**幂等**。
+
+例如存 10 时页面断线，链上可能已经成功。恢复后要用原编号核实，不能因为没看到结果就生成新编号再存 10。取消只停止等待和后续步骤，不能撤销已广播交易。详细例子见 [REQUESTS](REQUESTS.md)。
+
+旧 `TokenBank` 仍保留源码与部署；新页面只对幂等版写入，旧余额没有自动迁移。直接向银行转 Token 也不会增加个人存款。
+
+## 按一次操作读源码
+
+1. [前端说明](frontend/README.md)：从金额输入和钱包确认开始。
+2. [银行合约](contracts/src/IdempotentTokenBank.sol)：看操作去重、收币和扣账。
+3. [后端说明](backend/README.md)：看身份验证、链上核实和历史查询。
+4. [数据库说明](database/README.md)：理解事件、操作、会话各存什么。
+5. [请求与恢复](REQUESTS.md)：最后读取消、冲突、重组这些失败分支。
+
+实现各自位于本项目 `contracts / frontend / backend / database`，运行时不导入兄弟项目业务代码；普通授权练习在这里，签名存款继续学 [16](../eip712-permit-16/README.md)。
+
+## 排错先核对一组身份
+
+RPC、chain ID、Token、银行、钱包账户、索引数据库必须指向同一轮环境。两条 Anvil 都可能叫 31337，仅 chain ID 相同不足以证明连的是同一条链。
+
+若登录被拒，核对 `PUBLIC_ORIGIN` 与浏览器地址是否完全相同；`localhost` 和 `127.0.0.1` 不是同一来源。若交易成功但列表为空，先查索引进度，不要重复存款。

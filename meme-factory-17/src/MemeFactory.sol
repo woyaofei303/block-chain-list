@@ -28,11 +28,13 @@ contract MemeFactory is ReentrancyGuard {
         uint256 issuerFee
     );
 
+    /// @notice 部署一次共享实现，并把部署账户固定为平台收款人。
     constructor() {
         projectOwner = msg.sender;
         implementation = address(new MemeToken());
     }
 
+    /// @notice 为调用者创建新代币；创建后供应量仍为 0，真正发行发生在购买时。
     /// @param totalSupply 最多发行的整数枚数；不是创建时预铸给发行者的数量。
     /// @param price 每一枚的价格，单位 wei；一次铸造费用为 perMint * price。
     function deployMeme(string calldata symbol, uint256 totalSupply, uint256 perMint, uint256 price)
@@ -46,6 +48,8 @@ contract MemeFactory is ReentrancyGuard {
         emit MemeDeployed(tokenAddr, msg.sender, symbol, totalSupply, perMint, price);
     }
 
+    /// @notice 买一整批代币并立即分账；费用必须恰好等于每批枚数乘单价。
+    /// 例如一批 100 枚、每枚 1 gwei，买家付 100 gwei，平台得 1，发行者得 99。
     function mintMeme(address tokenAddr) external payable nonReentrant {
         address issuer = issuerOf[tokenAddr];
         require(issuer != address(0), "Unknown meme");
@@ -63,6 +67,7 @@ contract MemeFactory is ReentrancyGuard {
         emit MemeMinted(tokenAddr, msg.sender, amount, cost, platformFee, issuerFee);
     }
 
+    /// @notice 只在金额非零时付款；收款方拒收会让外层的铸币和其他分账一起回滚。
     function _pay(address recipient, uint256 amount) private {
         if (amount == 0) return;
         (bool success,) = payable(recipient).call{value: amount}("");

@@ -26,6 +26,7 @@ export const erc20 = new Interface([
 
 export class InputError extends Error {}
 
+/** 把地址转为校验和格式并拒绝零地址，避免把占位地址当成收款人或代币合约。 */
 export function address(value: string): string {
   try {
     const result = getAddress(value)
@@ -34,6 +35,7 @@ export function address(value: string): string {
   throw new InputError('地址无效：请使用非零的完整 Ethereum 地址。')
 }
 
+/** 把用户金额精确换成最小单位；6 位精度下 1.25 是 1250000，额外小数位直接报错而不舍入。 */
 export function amount(value: string, decimals: number): bigint {
   if (
     !Number.isInteger(decimals) ||
@@ -51,6 +53,7 @@ export function amount(value: string, decimals: number): bigint {
   return result
 }
 
+/** 在本机生成钱包并加密保存；文件必须不存在，目录与文件权限只向当前用户开放。 */
 export async function createWallet(file: string, password: string) {
   if (password.length < 12) throw new InputError('密码至少需要 12 个字符。')
   // 只保留随机私钥的钱包，不额外持久化助记词。
@@ -61,6 +64,7 @@ export async function createWallet(file: string, password: string) {
   return wallet.address
 }
 
+/** 只读取密钥库中的公开地址，查余额时无需解密私钥或输入密码。 */
 export async function walletAddress(file: string): Promise<string> {
   const encrypted = await readFile(file, 'utf8')
   if (!isKeystoreJson(encrypted))
@@ -79,6 +83,7 @@ export async function walletAddress(file: string): Promise<string> {
   )
 }
 
+/** 创建限定为 Sepolia 的 HTTP 客户端；实际网络还要由 assertSepolia 核验。 */
 export function connect(rpcUrl: string | undefined): JsonRpcProvider {
   try {
     const url = new URL(rpcUrl ?? '')
@@ -91,12 +96,14 @@ export function connect(rpcUrl: string | undefined): JsonRpcProvider {
   return new JsonRpcProvider(request, Number(CHAIN_ID), { cacheTimeout: -1 })
 }
 
+/** 向 RPC 核对链 ID，防止同一地址的交易被发往错误网络。 */
 export async function assertSepolia(provider: JsonRpcProvider) {
   if ((await provider.getNetwork()).chainId !== CHAIN_ID) {
     throw new InputError('网络错误：只允许 Sepolia（11155111）。')
   }
 }
 
+/** 先确认目标有合约代码，再读精度与余额；返回 bigint，显示时才换算成人能读的金额。 */
 export async function tokenBalance(
   provider: JsonRpcProvider,
   token: string,
@@ -119,6 +126,7 @@ export async function tokenBalance(
   return { decimals, raw }
 }
 
+/** 只预览 ERC20 转账：核对金额、nonce、余额和费用，再估算 gas、模拟调用；此时没有签名或广播。 */
 export async function buildTransfer(
   provider: JsonRpcProvider,
   input: {
@@ -178,6 +186,7 @@ export async function buildTransfer(
   }
 }
 
+/** 解密后核对签名账户与预览一致，仅生成签名交易及本地哈希；发送网络由 broadcast 负责。 */
 export async function signTransfer(
   file: string,
   password: string,
@@ -202,6 +211,7 @@ export async function signTransfer(
   return { signed, hash: keccak256(signed) }
 }
 
+/** 重新核对网络、nonce 和模拟结果，先落盘哈希再广播；RPC 超时时能凭记录查询，不能直接重发。 */
 export async function broadcast(
   provider: JsonRpcProvider,
   signed: string,
@@ -245,6 +255,7 @@ export async function broadcast(
   return response
 }
 
+/** 把底层异常转为可展示的原因；不把可能含 RPC 凭据的原始错误直接打印给用户。 */
 export function safeError(error: unknown): string {
   if (error instanceof InputError) return error.message
   if (typeof error === 'object' && error !== null && 'code' in error) {

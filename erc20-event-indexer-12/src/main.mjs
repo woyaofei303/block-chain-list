@@ -15,6 +15,7 @@ const rpc = createPublicClient({
 const db = new pg.Pool(config.database)
 // Ctrl+C / SIGTERM 阻止下一轮扫描，并打断轮询等待；正在执行的扫描会先结束。
 const abort = new AbortController()
+/** 让下一轮停止并取消轮询等待，正在执行的扫描先收尾，再关闭 HTTP 与数据库连接。 */
 const stop = () => abort.abort()
 process.once('SIGINT', stop)
 process.once('SIGTERM', stop)

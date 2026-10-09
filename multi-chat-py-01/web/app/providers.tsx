@@ -7,6 +7,7 @@ import { useState } from "react"
 import { isRetryableClientError } from "@/shared/http-client"
 import { fullJitterDelay } from "@/shared/retry"
 
+/** 为整页建立稳定的查询缓存；读请求可有限重试，写请求只有在声明幂等后才单独开启重试。 */
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>

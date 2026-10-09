@@ -5,6 +5,7 @@ import {BaseERC20} from "./BaseERC20.sol";
 
 /// @notice 带业务数据的接收接口，data 由接收合约自行解码。
 interface ITokenReceiverWithData {
+    /// @notice 代币转入后通知收款合约；from 是原付款人，data 由接收方约定如何解释。
     function tokensReceived(address from, uint256 amount, bytes calldata data) external returns (bool);
 }
 

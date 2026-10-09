@@ -6,6 +6,7 @@ import { AppError, asAppError, retryQuery } from "./errors.ts"
 export function createQueryClient() {
   return new QueryClient({
     queryCache: new QueryCache({
+      // 查询最终失败才统一入队；同一数据被多个组件使用，也只提示一次。
       onError: (cause, query) => {
         const error = asAppError(cause)
         const severity = error.code.startsWith("AUTH_") || error.code === "HTTP_401" ? 1 : 0
@@ -24,6 +25,7 @@ export function createQueryClient() {
       // 新一轮主动操作允许再次提示；后台轮询失败则保持抑制，直到对应查询恢复成功。
       onMutate: (_variables, mutation) =>
         errors.recover(JSON.stringify(mutation.options.mutationKey ?? ["write"])),
+      // 主动写操作失败至少需要用户留意；结果未知保留最高等级，不能自动重新发送。
       onError: (cause, _variables, _context, mutation) => {
         const error = asAppError(cause)
         errors.report(

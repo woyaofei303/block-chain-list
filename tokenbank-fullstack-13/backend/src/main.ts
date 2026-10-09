@@ -24,6 +24,7 @@ const rpc = createPublicClient({
 const db = new pg.Pool(config.database)
 // Ctrl+C / SIGTERM 阻止下一轮扫描，并打断轮询等待；正在执行的扫描会先结束。
 const abort = new AbortController()
+/** 通知主循环停止下一轮并打断等待；正在提交的扫描先完成，避免留下半批记录。 */
 const stop = () => abort.abort()
 process.once('SIGINT', stop)
 process.once('SIGTERM', stop)
@@ -34,7 +35,7 @@ db.on('error', () => {
   stop()
 })
 try {
-  // 1. 先核对网络，防止把其他链的数据写到配置的 chainId 下。
+  // 先核对网络，防止把其他链的数据写到配置的 chainId 下。
   if ((await rpc.getChainId()) !== config.chainId)
     throw new Error('RPC chain does not match CHAIN_ID')
   // 精度必须从合约读取，不能假设所有 ERC20 都是 18 位。
@@ -68,7 +69,7 @@ try {
       args: [zeroAddress, zeroHash],
     })
   }
-  // 2. 幂等建表：重复启动保留已有转账和扫描进度。
+  // 幂等建表：重复启动保留已有转账和扫描进度。
   await initDatabase(db)
   if (process.argv.includes('--once')) {
     // npm run scan：扫到本轮确认高度后退出，不启动 HTTP 服务。

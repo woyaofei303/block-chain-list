@@ -1,23 +1,41 @@
-# TokenBank + Chainlink CRE 自动半额划转
+# 23 · 自动化银行：超过阈值时划走一半
 
-用户先 `approve`，再调用 `deposit(amount)`。CRE Cron 每 5 分钟读取银行状态；当 `totalDeposits > threshold` 时生成报告，由 Forwarder 调用 `TokenBankReceiver.onReport`，再调用 `TokenBank.withdrawhalf(recipient)`。
+智能合约不会自己在五分钟后醒来，必须有人发起调用。本项目用 Chainlink CRE 工作流定时读取银行，满足条件时生成报告，通过 Forwarder 和 Receiver 调用银行。
 
-本次实际运行记录见 [RUN_LOG.md](RUN_LOG.md)，包含本地链上的余额与交易哈希。代码入口为 [GitHub · cre-project-23](https://github.com/woyaofei303/block-chain-list/tree/main/cre-project-23) 和 [GitHub · TokenBank](https://github.com/woyaofei303/block-chain-list/blob/main/tokenbank-07/contracts/TokenBank.sol)。运行日志记录的是验证当时的状态，发布版本以 Git 提交历史为准。
+先完成 [07 的存取款](../tokenbank-07/README.md)。本项目直接复用那份 TokenBank，自己提供 Receiver、工作流、测试和部署脚本。
 
-## 实现口径与阅读顺序
+## 用 120 枚与 100 枚阈值举例
 
-1. [TokenBank.sol](../tokenbank-07/contracts/TokenBank.sol)：保留 `deposit(amount)` / `withdraw(amount)`，新增 `totalDeposits`、owner 配置的 `automationReceiver` 和 `withdrawhalf(recipient)`。
-2. [TokenBankReceiver.sol](contracts/evm/src/TokenBankReceiver.sol)：收款人、阈值和可信 Forwarder 在部署时固定；`getState()` 一次返回金额、阈值、收款人和 `nextNonce`。
-3. [workflow.ts](my-workflow/workflow.ts)：Cron 读取 finalized 状态；严格超阈值才写报告，报告内容为 `abi.encode(uint256 nonce)`。
-4. [合约测试](contracts/test/TokenBankReceiver.t.sol)、[工作流测试](my-workflow/workflow.test.ts)、[本地集成测试](my-workflow/integration.test.ts)。
+Alice 授权并存入 120 枚，阈值为 100。工作流读取 `totalDeposits=120`，发现严格大于 100，于是报告给链上 Receiver，银行划出 `120/2=60` 给固定收款人。
 
-金额均为 Token 最小单位；示例 BaseERC20 是 18 位精度。`threshold=100000000000000000000` 表示 100 枚，仅在大于 100 时执行。阈值可在部署时自定义，更换阈值或收款人需要重新部署 Receiver 并由银行 owner 重新绑定。
+此后银行资产和 Alice 可提余额都剩 60。自动划出的 60 不再属于 Alice 的可提账本；不能对用户继续显示“仍可取 120”。若 Alice 存 80、Bob 存 40，则划出后分别可提 40、20。
 
-**自动转出的部分会减少每位存款人的可提余额。** 例如总存款 120 转出 60 后，用户合计只能再提 60。半额分摊按用户余额计算，奇数舍入误差不超过一个最小单位，总扣账严格等于 `floor(totalDeposits / 2)`。这属于本题的资金归集语义，不能将原始存款额继续展示为可提余额。
+恰好 100 不触发；直接给银行转 Token 不增加 `totalDeposits`，不参与半额计算。金额使用最小单位，本例 18 位精度的阈值为 `100000000000000000000`。
 
-直接 `transfer` 到银行的 Token 不计入 `totalDeposits`，也不会由半额入口转出。教学版只支持无手续费、无 rebase、返回 bool 的标准 Token。为限制 O(n) 扫描 gas，最多接收 100 个历史存款地址；已有用户可继续存取。大规模场景应改用份额记账。
+## 谁每五分钟做了什么
 
-Receiver 写入前重新检查当前阈值和报告序号。成功后序号递增；重复报告拒绝，转币失败则序号与余额一起回滚。finalized 状态可能落后于最新交易，期间旧序号报告会被链上拒绝，不会重复划款。银行 owner 也可直接手动调用 `withdrawhalf`，该管理员操作不走 CRE 阈值检查。
+```text
+Cron 定时触发 → workflow 读 finalized 状态
+超过阈值 → 生成带 nonce 的报告 → Forwarder 提交
+Receiver 验调用来源和报告序号 → 再查当前金额
+TokenBank.withdrawhalf → 分摊扣账、转出一半 → nonce 前进
+```
+
+Cron 是时间触发规则；Forwarder 是把可信报告送上链的入口；Receiver 是本项目接收并检查报告的合约。链下判断之后，链上仍要重新检查，因为这期间有人可能已经提款。
+
+nonce 是报告序号，初始为 1。成功处理后递增，旧报告不能再划一次；转币失败时序号和账本一起回滚，可用原序号重试。
+
+`finalized` 是节点认为已最终确认的状态，可能落后于最新交易。它不是绕过链上检查的理由。银行 owner 仍有直接调用 `withdrawhalf` 的权限，该手工入口不走 CRE 阈值判断。
+
+## 先做本地实验，再理解上线
+
+下方先跑 Forge、Bun 测试，再手动模拟一份报告。手工 Forwarder 使用本地解锁账户，SDK 测试 runtime 代替真实 DON（去中心化节点网络）共识；它不证明公共网络已经开始每五分钟运行。
+
+[TokenBankReceiver.sol](contracts/evm/src/TokenBankReceiver.sol) 看 `getState → _processReport`；[workflow.ts](my-workflow/workflow.ts) 看读状态、判断、写报告。最后对照 [RUN_LOG](RUN_LOG.md) 的历史余额，区分预期和当时实测。
+
+教学版最多 100 个历史存款地址，半额划转遍历账本并处理奇数舍入；只适配无手续费、无 rebase 的标准 Token。收款人、阈值和 Forwarder 在 Receiver 部署时固定。
+
+2026-10-09 已通过 12 项 Receiver 合约测试；未重跑 CRE SDK 工作流测试、启动定时任务或部署公共链。下面的 CLI simulate 也是单次模拟，不会自动开启长期任务。
 
 ## 安装与检查
 
@@ -111,4 +129,4 @@ forge script cre-project-23/contracts/script/DeployTokenBankReceiver.s.sol:Deplo
 cre workflow simulate my-workflow --target staging-settings --trigger-index 0 --non-interactive
 ```
 
-模拟是手动触发的一次执行；持续每 5 分钟执行需要部署并激活 workflow。[官方模拟文档](https://docs.chain.link/cre/guides/operations/simulating-workflows) 与 [部署文档](https://docs.chain.link/cre/guides/operations/deploying-workflows) 分别说明两者。具体本次 CLI 状态以 [RUN_LOG.md](RUN_LOG.md) 为准。
+模拟是手动触发的一次执行；持续每 5 分钟执行需要部署并激活 workflow。[官方模拟文档](https://docs.chain.link/cre/guides/operations/simulating-workflows) 与 [部署文档](https://docs.chain.link/cre/guides/operations/deploying-workflows) 分别说明两者。历史 CLI 状态以 [RUN_LOG.md](RUN_LOG.md) 为准。

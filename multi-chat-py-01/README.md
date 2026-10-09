@@ -1,193 +1,114 @@
-# Multi Chat
+# 01 · 做一个能记住上下文的聊天程序
 
-本机多轮 AI 对话客户端，提供终端版和 Web 版。Web 版使用 Next.js、Tailwind CSS 与 TanStack Query，支持会话管理、Markdown、流式回答、停止生成、失败重试，以及基于 `Last-Event-ID` 的断线续传和事件去重。
+这个项目解决一个熟悉的问题：问完“我叫小明”，再问“我叫什么”，程序怎样把前一句带给模型？你会先运行聊天，再理解历史保存、逐字显示、停止与重试。它是通用应用练习，不涉及区块链。
 
-## 从哪里开始读代码
+有两个入口：Python 终端版适合理解最短流程；Web 版增加会话列表和流式回答。两者独立运行，Web 不会调用 Python。
 
-完整的前端发送、服务端领域编排、大模型请求、两段 SSE 解析、持久化和前台渲染
-链路见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。文档包含推荐阅读顺序、
-请求/响应示例、状态机、关键不变量和故障排查入口。
+## 先用一个例子理解
 
-## 配置
+1. 你输入“我叫小明”，程序把它加入本轮请求。
+2. 模型回答后，程序保存用户问题与助手回答。
+3. 你再问“我叫什么”，程序把可用的历史和新问题一起发送。
+4. 模型据此回答。所谓“记住”主要是应用再次提供历史，不是模型永久记住了你。
 
-### 密钥安全
+终端版在整轮请求成功后才更新历史；Web 版先保存用户消息和助手占位，再逐步保存回答。请求失败时，这两种保存策略的表现不同。
 
-- API Key 只写入本机的 `.env` 或 `web/.env.local`，不要提交到 Git。
-- 不要把密钥写进浏览器代码、URL、README、截图或聊天消息。
-- 截图或日志中一旦出现完整密钥，应立即在服务商控制台撤销并重新创建。
-- 修改环境变量后需要重启对应程序。
+## 第一次运行：任选一个入口
 
-### Web 版配置
+所有 `cd` 命令从本仓库根目录开始。需要 Python 3，或 Node.js 20.9+ 与 pnpm；模型调用还需要你自己的兼容服务配置。先用测试学习时无需发起真实模型请求。
 
-进入 Web 目录并创建本地配置：
+### 终端版：先看懂一问一答
 
 ```bash
-cd web
-cp .env.example .env.local
+cd multi-chat-py-01
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+test -f .env || cp .env.example .env
+```
+
+编辑该目录的 `.env`，只在本机填写凭据：
+
+```dotenv
+DEEPSEEK_API_KEY=<服务商密钥>
+DEEPSEEK_BASE_URL=<兼容接口根地址>
+DEEPSEEK_MODEL=<模型ID>
+```
+
+仍在 `multi-chat-py-01` 执行：
+
+```bash
+python multi_chat.py
+```
+
+依次输入上面的两句话，观察第二次回答；输入 `/exit` 退出。历史写入**启动程序的当前目录**下的 `chat_history.json`。`/clear` 会清空这份历史，练习时先确认没有需要保留的内容。
+
+### Web 版：观察一段回答怎样逐步出现
+
+```bash
+cd multi-chat-py-01/web
+pnpm install
+test -f .env.local || cp .env.example .env.local
 ```
 
 编辑 `web/.env.local`：
 
-```env
-AI_API_KEY=<你的新 API Key>
-AI_BASE_URL=<OpenAI 兼容接口根地址>
-AI_MODEL=<接口实际使用的模型 ID 或部署名称>
+```dotenv
+AI_API_KEY=<服务商密钥>
+AI_BASE_URL=<兼容接口根地址>
+AI_MODEL=<模型ID或部署名称>
 ```
 
-变量说明：
-
-- `AI_API_KEY`：服务商生成的 API Key，只在 Next.js 服务端读取。
-- `AI_BASE_URL`：OpenAI Chat Completions 兼容接口的根地址。程序会自动追加 `/chat/completions`，这里不要重复填写该路径。
-- `AI_MODEL`：请求体中的 `model` 值，应填写模型 ID 或部署名称，不一定等于控制台里的中文描述。
-- `CHAT_STORE_PATH`：可选，Web 会话数据文件路径；默认是 `web/data/chat-store.json`。
-- `LEGACY_HISTORY_PATH`：可选，首次导入的 Python 历史文件路径；默认是仓库根目录的 `chat_history.json`。
-
-建议为自定义数据路径使用绝对路径：
-
-```env
-CHAT_STORE_PATH=/absolute/path/to/chat-store.json
-LEGACY_HISTORY_PATH=/absolute/path/to/chat_history.json
-```
-
-#### 阿里云百炼/模型服务配置
-
-截图中应选择“OpenAI 兼容地址”，不要使用单独的 `API Host`，也不要使用 DashScope 的 `/api/v1` 地址。
-
-```env
-AI_API_KEY=<重新创建的 API Key>
-AI_BASE_URL=https://<你的 API Host>/compatible-mode/v1
-AI_MODEL=<模型 ID 或部署名称>
-```
-
-最终请求地址由程序组成：
-
-```text
-https://<你的 API Host>/compatible-mode/v1/chat/completions
-```
-
-如果控制台只展示中文描述，例如“测试用”，还需要在模型或部署详情中找到真正传给 API 的模型 ID/部署名称，填写到 `AI_MODEL`。
-
-#### DeepSeek
-
-```env
-AI_API_KEY=<DeepSeek API Key>
-AI_BASE_URL=https://api.deepseek.com
-AI_MODEL=deepseek-chat
-```
-
-#### OpenAI
-
-```env
-AI_API_KEY=<OpenAI API Key>
-AI_BASE_URL=https://api.openai.com/v1
-AI_MODEL=<账号可用的模型 ID>
-```
-
-#### 其他兼容服务
-
-只要服务支持以下接口和 SSE 流格式，就可以直接接入：
-
-```text
-POST <AI_BASE_URL>/chat/completions
-```
-
-请求使用 Bearer Token，并发送兼容 OpenAI Chat Completions 的 `model`、`messages` 和 `stream: true` 字段。
-
-### Web 配置兼容与优先级
-
-Web 版也兼容旧的 `DEEPSEEK_*` 变量。两组变量同时存在时，优先级如下：
-
-```text
-AI_API_KEY  > DEEPSEEK_API_KEY
-AI_BASE_URL > DEEPSEEK_BASE_URL > 根据密钥类型选择默认地址
-AI_MODEL    > DEEPSEEK_MODEL    > 根据密钥类型选择默认模型
-```
-
-新配置统一推荐使用 `AI_*`，避免把非 DeepSeek 服务写进名称为 `DEEPSEEK_*` 的变量。
-
-### 终端版配置
-
-终端版保留原有变量名，在仓库根目录创建 `.env`：
+程序会在根地址后追加 `/chat/completions`，不要重复填写这部分。密钥只由服务端读取，不使用 `NEXT_PUBLIC_` 前缀。保存后执行：
 
 ```bash
-cp .env.example .env
-```
-
-DeepSeek 示例：
-
-```env
-DEEPSEEK_API_KEY=<DeepSeek API Key>
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-chat
-```
-
-终端版底层同样使用 OpenAI 兼容客户端，因此也可以把 `DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 换成其他兼容服务的地址和模型，但变量名仍保持不变。
-
-Web 版读取 `web/.env.local`，终端版读取仓库根目录 `.env`；需要同时使用两个客户端时，应分别配置。
-
-### 常见配置错误
-
-- `401`：API Key 无效、已撤销，或者复制时包含多余空格。
-- `403`：密钥没有模型或工作空间权限。
-- `404`：通常是 `AI_BASE_URL` 填错，或错误地重复添加了 `/chat/completions`。
-- `400`：通常是 `AI_MODEL` 不是有效的模型 ID/部署名称，或服务并不兼容 Chat Completions。
-- `429`：额度不足、触发频率限制或并发限制；程序会对可重试错误执行指数退避和随机抖动。
-- 页面仍显示旧模型：保存 `.env.local` 后重启 `pnpm dev`。
-- 浏览器不能直接看到 Key：这是正常行为，未以 `NEXT_PUBLIC_` 开头的变量只在服务端使用。
-
-## 安装与运行 Web 版
-
-要求 Node.js 20.9.0 或更高版本，并安装 `pnpm`。
-
-```bash
-cd web
-pnpm install
 pnpm dev
 ```
 
-访问：
+打开 `http://127.0.0.1:3000`，新建会话、发送问题，再试一次停止和重试。预期能看到文字逐步出现；刷新后已保存的消息仍在。
+
+默认历史保存在 `web/data/chat-store.json`。首次建库时会尝试导入 `multi-chat-py-01/chat_history.json`；之后两份历史各自维护。可用 `CHAT_STORE_PATH`、`LEGACY_HISTORY_PATH` 指定绝对路径。Web 兼容旧 `DEEPSEEK_*` 配置，若同时存在则 `AI_*` 优先。
+
+## 点击发送后，谁调用谁
 
 ```text
-http://127.0.0.1:3000
+浏览器发送 JSON → Route 校验 → ChatService 保存本轮并启动生成
+模型返回文字片段 → GenerationManager 汇总和保存
+浏览器订阅 SSE → 更新页面缓存 → 显示回答
 ```
 
-首次启动时，如果仓库根目录存在 `chat_history.json`，程序会将它导入为一个 Web 会话。导入完成后，Web 版和终端版分别维护自己的历史。
+JSON 是传递结构化数据的文本格式。SSE 是服务器持续向浏览器推送事件的连接，可以理解为“答案写一段，寄一段”。首次 POST 返回的 `generationId` 是任务编号，不是最终答案。
 
-## 安装与运行终端版
+`requestKey` 是一次发送的编号。同一次 HTTP 请求重发时复用它，服务端会返回原任务，避免重复生成。SSE 的事件编号则用于断线后续收、去掉重复片段；两种编号解决的问题不同。
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python multi_chat.py
-```
+断线不等于停止。点击停止会请求服务端终止生成；重试会建立新的生成任务。已经显示过部分文字后，不直接拼接另一次模型回答，以免混出错误内容。
 
-终端命令：
+## 对照代码学习
 
-- `/clear`：清空已保存的对话历史。
-- `/exit`：退出程序。
+1. [multi_chat.py](multi_chat.py)：读 `complete_turn`，看历史如何随成功请求更新。
+2. [聊天服务](web/features/chat/server/service.ts)：看 Web 为什么先落盘再开始生成。
+3. [生成管理器](web/domains/generation/server/manager.ts)：看事件、停止和保存如何衔接。
+4. [架构讲解](docs/ARCHITECTURE.md)：沿同一条消息追到浏览器，进一步理解缓存与失败恢复。
 
-终端历史默认保存在仓库根目录的 `chat_history.json`。
+## 验证与排错
 
-## Web 代码结构
-
-- `web/domains/conversation`：会话模型、查询、界面和本地存储。
-- `web/domains/generation`：生成事件、任务生命周期和 OpenAI 兼容模型接入。
-- `web/features/chat`：编排会话与生成领域的完整聊天用例。
-- `web/app`：Next.js 页面和 HTTP/SSE 路由适配器。
-- `web/server`：服务端运行时组装。
-- `web/shared`：不包含业务概念的 HTTP 和重试工具。
-
-领域模型不依赖 Next.js 或 React；客户端不得导入 `server` 目录。会话与生成之间的跨领域调用统一放在 `features/chat` 中。
-
-## 测试
+从仓库根目录分别进入对应目录执行；2026-10-09 已通过 2 项 Python 测试、14 项 Web 测试，以及 Web 的 lint 和类型检查。重启恢复已覆盖两个会话同时中断：所有残留的生成状态都会改为可重试的失败状态，已有消息保留。
 
 ```bash
+cd multi-chat-py-01
 python3 -m unittest -v
+```
 
-cd web
+```bash
+cd multi-chat-py-01/web
 pnpm test
 pnpm lint
 pnpm typecheck
-pnpm build
 ```
+
+- `401/403`：检查密钥及模型权限；不要把密钥粘进日志求助。
+- `404`：检查根地址是否多写或少写了接口路径。
+- 修改配置没生效：重启当前服务。
+- 页面刷新后没有历史：先确认启动目录和存储路径，不要新建空文件覆盖原记录。
+
+学会的标志：能解释“发送成功”和“回答完成”为什么是两个时刻，以及为何重试请求不应该生成两份答案。

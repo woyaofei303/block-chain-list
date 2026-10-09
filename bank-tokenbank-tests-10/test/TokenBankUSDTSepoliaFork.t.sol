@@ -15,10 +15,15 @@ interface ForkVm {
 
 // 测试只需要 Sepolia USDT 的这些公开方法。
 interface IUSDT {
+    /// @notice 让 spender 最多代扣 amount 个最小单位，本调用不转币。
     function approve(address spender, uint256 amount) external returns (bool);
+    /// @notice 查询账户的代币最小单位余额；本测试 USDT 为 6 位精度。
     function balanceOf(address account) external view returns (uint256);
+    /// @notice 读取代币精度，避免把 USDT 的金额误按 18 位换算。
     function decimals() external view returns (uint8);
+    /// @notice 读取符号用于核对测试资产；身份仍应以网络和合约地址为准。
     function symbol() external view returns (string memory);
+    /// @notice 由调用者转出代币给 to；fork 中只改变本地副本。
     function transfer(address to, uint256 amount) external returns (bool);
 }
 

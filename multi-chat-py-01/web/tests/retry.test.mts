@@ -3,6 +3,7 @@ import test from "node:test"
 
 import { fullJitterDelay, isRetryableStatus } from "../shared/retry.ts"
 
+// 注入固定随机数检查退避区间与上限，避免使用真实等待拖慢测试。
 test("uses capped exponential backoff with full jitter", () => {
   assert.equal(
     fullJitterDelay(0, () => 0.5),

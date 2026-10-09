@@ -15,6 +15,7 @@ import {
 } from "../domains/generation/server/openai-compatible.ts"
 import { createChatService } from "../features/chat/server/service.ts"
 
+/** 在服务端创建共享仓库、任务管理器和用例服务，路由复用这一组对象来关联生成与历史。 */
 function createRuntime() {
   const store = createConversationStore({
     storePath:
@@ -25,9 +26,11 @@ function createRuntime() {
       path.join(process.cwd(), "..", "chat_history.json"),
   })
   const generations = createGenerationManager({
+    /** 模型适配器按需读取服务端配置，返回可取消的文本流，密钥不会进入客户端。 */
     stream(messages, signal) {
       return streamChatCompletion(messages, getAiConfig(), signal)
     },
+    /** 把生成快照写回对应助手消息，消息内容与 SSE 已处理进度一起保存。 */
     persist(generationId, update) {
       return store.updateAssistant(generationId, update)
     },
@@ -49,6 +52,7 @@ const globalRuntime = globalThis as typeof globalThis & {
 export const runtime = globalRuntime.multiChatRuntime ?? createRuntime()
 globalRuntime.multiChatRuntime = runtime
 
+/** 供会话列表展示当前模型名，不返回密钥或模型服务配置。 */
 export function configuredModel() {
   return getConfiguredModel()
 }

@@ -38,6 +38,7 @@ export function createConversationStore(options: StoreOptions) {
   let dataPromise: Promise<ChatStoreData> | undefined
   let writes = Promise.resolve()
 
+  /** 先写临时文件再替换历史文件；外层写队列保证本进程不会同时争用同一个临时文件。 */
   async function writeStore(data: ChatStoreData) {
     await mkdir(path.dirname(options.storePath), { recursive: true })
     const temporaryPath = `${options.storePath}.tmp`
@@ -46,6 +47,7 @@ export function createConversationStore(options: StoreOptions) {
     await rename(temporaryPath, options.storePath)
   }
 
+  /** 加载并校验历史，把重启后无法继续的生成标为失败；仅在 Web 历史不存在时导入旧 Python 历史。 */
   async function load(): Promise<ChatStoreData> {
     try {
       const parsed: unknown = JSON.parse(
@@ -56,13 +58,15 @@ export function createConversationStore(options: StoreOptions) {
       }
       const data = parsed
       // 进程退出后上一次的流已不可能继续，将悬挂状态转成可重试的失败状态。
-      const interrupted = data.conversations.some((conversation) =>
-        conversation.messages.some((message) => {
-          if (message.status !== "streaming") return false
+      // 要处理每个会话；some 找到第一条就结束，不适合在这里批量修改状态。
+      let interrupted = false
+      for (const conversation of data.conversations) {
+        for (const message of conversation.messages) {
+          if (message.status !== "streaming") continue
           message.status = "failed"
-          return true
-        })
-      )
+          interrupted = true
+        }
+      }
       if (interrupted) await writeStore(data)
       return data
     } catch (error) {
@@ -110,12 +114,14 @@ export function createConversationStore(options: StoreOptions) {
     return data
   }
 
+  /** 复用同一次加载 Promise，避免并发首请求重复导入或覆盖历史。 */
   function initialize() {
     // 同一进程只读盘一次，后续读写都共享这一份内存快照。
     dataPromise ??= load()
     return dataPromise
   }
 
+  /** 让修改依次进入写队列，再保存到磁盘；这是单进程串行写入，不具备数据库事务的回滚能力。 */
   function mutate<T>(change: (data: ChatStoreData) => T | Promise<T>) {
     // Promise 链相当于单机写锁，防止两个请求互相覆盖；失败后仍继续接收下一次写入。
     const operation = writes.then(async () => {
@@ -133,6 +139,7 @@ export function createConversationStore(options: StoreOptions) {
   }
 
   return {
+    /** 等待排队写入结束后按最近更新时间返回副本，界面修改副本不会影响仓库。 */
     async listConversations() {
       await writes
       const data = await initialize()
@@ -142,6 +149,7 @@ export function createConversationStore(options: StoreOptions) {
         )
       )
     },
+    /** 读取一个会话的完整消息副本；不存在返回 null，由接口决定如何展示。 */
     async getConversation(id: string) {
       await writes
       const data = await initialize()
@@ -150,6 +158,7 @@ export function createConversationStore(options: StoreOptions) {
           null
       )
     },
+    /** 创建空会话并保存；标题先用“新对话”，第一条用户消息到来后再命名。 */
     createConversation() {
       return mutate((data) => {
         const timestamp = now()
@@ -164,6 +173,7 @@ export function createConversationStore(options: StoreOptions) {
         return conversation
       })
     },
+    /** 压缩多余空白并检查 1～80 字标题，保存后更新排序时间。 */
     renameConversation(id: string, title: string) {
       return mutate((data) => {
         const conversation = requireConversation(data, id)
@@ -176,6 +186,7 @@ export function createConversationStore(options: StoreOptions) {
         return conversation
       })
     },
+    /** 从历史中删除指定会话；调用方须先停止其生成任务，避免任务随后写回已删除消息。 */
     deleteConversation(id: string) {
       return mutate((data) => {
         const index = data.conversations.findIndex((item) => item.id === id)
@@ -184,6 +195,7 @@ export function createConversationStore(options: StoreOptions) {
         return removed
       })
     },
+    /** 先按 requestKey 查重，再一起保存用户消息和助手占位；HTTP 重试会拿回原任务，不会重复问模型。 */
     addUserTurn(
       conversationId: string,
       input: { content: string; requestKey: string; model: string }
@@ -249,6 +261,7 @@ export function createConversationStore(options: StoreOptions) {
         }
       })
     },
+    /** 按生成编号找到助手消息，写入当前文本、状态与事件进度；旧编号不能写到重试后的新任务里。 */
     updateAssistant(
       generationId: string,
       update: Partial<Pick<ChatMessage, "content" | "status" | "lastEventId">>
@@ -268,6 +281,7 @@ export function createConversationStore(options: StoreOptions) {
         return message
       })
     },
+    /** 在原助手消息的位置开始新生成；同一请求重复到达则复用，另一个任务生成中则拒绝。 */
     retryAssistant(
       conversationId: string,
       input: { assistantMessageId: string; requestKey: string; model: string }
@@ -308,6 +322,7 @@ export function createConversationStore(options: StoreOptions) {
         return { generationId, assistantMessageId: message.id, reused: false }
       })
     },
+    /** 只取当前占位之前的用户消息与完整回答；残缺回答不会被当成模型已说完的内容。 */
     async getGenerationContext(generationId: string) {
       await writes
       const data = await initialize()
@@ -327,6 +342,7 @@ export function createConversationStore(options: StoreOptions) {
       }
       throw new Error("生成任务不存在")
     },
+    /** 列出当前会话仍在生成的编号，删除服务会先逐个停止并等待它们收尾。 */
     async activeGenerationIds(id: string) {
       await writes
       const data = await initialize()
@@ -341,12 +357,14 @@ export function createConversationStore(options: StoreOptions) {
   }
 }
 
+/** 供写操作查找目标；找不到即终止，不能悄悄创建另一个会话。 */
 function requireConversation(data: ChatStoreData, id: string) {
   const conversation = data.conversations.find((item) => item.id === id)
   if (!conversation) throw new Error("会话不存在")
   return conversation
 }
 
+/** 只接受旧 Python 版的用户/助手文本列表，损坏的历史要报错而不是被当成空数据覆盖。 */
 function isLegacyHistory(
   value: unknown
 ): value is Array<{ role: "user" | "assistant"; content: string }> {

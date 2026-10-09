@@ -1,5 +1,13 @@
 # NFTMarket Gas Report v2 — 优化后
 
+## 从一次上架理解优化
+
+先读 [v1 基线](gas_report_v1.md)。原挂单保存地址与价格占两个槽；普通价格压缩后，一个槽就能装下地址和价格，减少昂贵的存储读写。极大价格仍使用扩展槽，所以不能概括成“每种报价都只用一个槽”。
+
+比较时用 `(旧Gas - 新Gas) / 旧Gas`。例如某教学场景从 100 降到 80，节省 20%；这只是计算示例，不是下面的测量值。还要看部署成本和大额报价，不能只挑最省的一行。
+
+先看实现与取舍，再看同场景数字，最后读原始报告。下文保留历史实验的参数和数据，本次未重测；旧链上合约不会因为本地源码优化自动变便宜。
+
 优化普通报价的存储访问，同时保留原函数签名、事件、回滚消息、完整 uint256 报价范围及先更新状态再外部调用的顺序。
 
 源码：[src/NFTMarket.sol](src/NFTMarket.sol)；测试：[NFTMarket.t.sol](test/NFTMarket.t.sol)。
@@ -19,7 +27,7 @@
 - 普通报价为 100 BERC20（`100 ether` 个最小单位）；普通购买场景先改价为 200 BERC20；Token ID=7。扩展报价依次使用 `2^96-1`、`2^256-1`，然后改回普通报价。
 - Deployment Size 含 64 字节构造参数；`forge build --sizes` 的 Initcode Size 不含这些参数。
 
-计量方法参考：[Foundry Gas Reports](https://getfoundry.sh/forge/gas-tracking/gas-reports/)；本报告数值全部来自本次本地运行，不代表 Base 主网实际费用。
+计量方法参考：[Foundry Gas Reports](https://getfoundry.sh/forge/gas-tracking/gas-reports/)；本报告数值全部来自报告日期的本地运行，不代表 Base 主网实际费用。
 
 ## 复现命令
 

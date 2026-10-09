@@ -1,44 +1,45 @@
-# 使用 Viem 读取 esRNT 私有数组
+# 18 · 读懂链上存储：private 为什么仍能读取
 
-本练习根据本次提供的 `esRNT` 题目实现：使用 Viem `getStorageAt` 读取 `_locks` 的全部元素，并逐行打印 `user`、`startTime`、`amount`。完整实测输出见 [RUN_LOG.md](RUN_LOG.md)。
+Solidity 的 `private` 表示其他合约不能通过普通成员访问直接读取它，不表示数据被加密。本项目没有 getter，却能用 Viem 的 `getStorageAt` 读出 `_locks` 的 11 条记录。
 
-保留原题的 `private` 数组与构造公式，仅修正 `I+1` 为 `i+1`，补齐 SPDX 与 Solidity 版本。没有添加 getter。`private` 限制 Solidity 层面的访问，不会加密链上存储。未提供公共链地址，因此本次记录来自独立本地 Anvil，不代表 Sepolia 或主网部署。
+这份实验练习存储布局，不处理真实锁仓资产。先了解 [04 的合约状态](../firstcontract-04/README.md)，再跟着一个元素计算它的位置。
 
-## 阅读顺序与存储位置
+## 从“抽屉”理解 storage slot
 
-1. [src/esRNT.sol](src/esRNT.sol)：构造函数写入 11 项。
-2. [src/read-locks.ts](src/read-locks.ts)：读取长度、计算元素槽、拆解字段和打印结果。
-3. [test/read-locks.test.ts](test/read-locks.test.ts) 与 [test/esRNT.t.sol](test/esRNT.t.sol)：分别检查读取器的边界及实际 Solidity 存储布局。
-4. [script/Deploy.s.sol](script/Deploy.s.sol)：通过 `forge script` 模拟或部署。
-5. [RUN_LOG.md](RUN_LOG.md)：本次运行环境、部署证据和全部输出。
+链上持久存储按 32 字节一个槽（slot）组织。动态数组的槽 0 只放长度，元素从 `keccak256(abi.encode(uint256(0)))` 对应的位置开始，并不紧跟在槽 1。
 
-本合约没有继承，也没有位于 `_locks` 前面的状态变量，因此长度在 slot `0`。每个结构体占 64 字节：
+每条记录是 `address user + uint64 startTime + uint256 amount`：地址 20 字节、时间 8 字节，可以合放一个 32 字节槽；金额需要完整 32 字节，放下一个槽。因此每条占两个槽。
 
 ```text
-slot 0 = _locks.length
-base = keccak256(32 字节编码的 uint256(0))
-
-locks[i] 的第一个槽 = base + 2 * i
-  低 160 位：user（address，20 字节）
-  接着 64 位：startTime（uint64，8 字节）
-  高 32 位：未使用
-
-locks[i] 的第二个槽 = base + 2 * i + 1
-  全部 256 位：amount（uint256，32 字节）
+slot 0 = 11
+base = keccak256(32字节的0)
+第 i 条：base + 2*i 存 user 和 startTime
+         base + 2*i + 1 存 amount
 ```
 
-核心解码公式：
+读回第一槽后，低 160 位是地址，再向右移 160 位取 64 位时间。剩余高位不是金额；金额在另一个槽。这个位置计算只适用于本项目的确切字段顺序。
 
-```typescript
-const base = BigInt(keccak256(toHex(0n, { size: 32 })))
-const slot = base + i * 2n
-const user = toHex(packed & ((1n << 160n) - 1n), { size: 20 })
-const startTime = (packed >> 160n) & ((1n << 64n) - 1n)
+## 用第 0 条和第 10 条核对公式
+
+设部署区块时间为 T，构造函数写入：
+
+```text
+i=0： user=0x0000000000000000000000000000000000000001，startTime=2T，amount=10^18
+i=10：user=0x000000000000000000000000000000000000000b，startTime=2T-10，amount=11×10^18
 ```
 
-`packed` 通过 `getStorageAt({ address, slot: toHex(slot, { size: 32 }), blockNumber })` 获得；`amount` 从下一个槽读取。时间和金额始终使用 `bigint`，直接输出原始十进制整数。这里的 `amount` 是题目中的存储值，不能仅凭 `1e18` 判断实际代币资产或余额。
+这里 `amount` 只是题目保存的整数；不能看到 `10^18` 就当作合约真的持有 1 ETH。时间来自**部署时**，不是读取时。
 
-参考：[Solidity 存储布局](https://docs.soliditylang.org/en/v0.8.24/internals/layout_in_storage.html)、[Viem getStorageAt](https://viem.sh/docs/contract/getStorageAt)。
+读取程序先固定一个区块号，之后长度与元素全部用它查询，避免读到不同高度的混合状态。时间和金额用 `bigint`，保留完整整数。
+
+## 按这个顺序读代码
+
+1. [esRNT.sol](src/esRNT.sol)：先看结构体和构造公式，不需要添加 getter。
+2. [read-locks.ts](src/read-locks.ts)：看选定区块、槽定位、解码和逐条输出。
+3. [read-locks.test.ts](test/read-locks.test.ts)：检查打包边界和错误输入。
+4. [RUN_LOG](RUN_LOG.md)：把历史 11 条输出代回公式；其中本地地址不是公共链部署。
+
+下面保留从安装到读取的可复制操作。每一步的数值是预期。2026-10-09 已在独立 Anvil 部署并用 Viem 和 CLI 读取全部 11 项，逐项核对地址、部署时间公式和金额；1 项 Forge、2 项 Node.js 测试及 lint、类型检查通过。
 
 ## 安装与检查
 

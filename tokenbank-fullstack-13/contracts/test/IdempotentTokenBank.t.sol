@@ -5,6 +5,7 @@ import {BaseERC20} from "../src/BaseERC20.sol";
 import {IdempotentTokenBank} from "../src/IdempotentTokenBank.sol";
 
 contract IdempotentTokenBankTest {
+    /// @notice 存 10、取 4，各自重放不重复动钱；冲突参数拒绝，失败占号回滚后还能重试。
     function testReplayConflictAndRollback() public {
         BaseERC20 token = new BaseERC20();
         IdempotentTokenBank bank = new IdempotentTokenBank(address(token));
@@ -38,26 +39,31 @@ contract CallbackToken {
     bool public blocked;
     bool public failTransfer;
 
+    /// @notice 给恶意测试 Token 指定要回调的银行，随后才能模拟重入。
     function configure(IdempotentTokenBank value) external {
         bank = value;
     }
 
+    /// @notice 切换到转账失败模式，用来检查银行提款时是否完整回滚。
     function fail() external {
         failTransfer = true;
     }
 
+    /// @notice 假装完成转币并尝试回调银行，记录重入是否被锁挡住；不是实际代币实现。
     function transferFrom(address, address, uint256) external returns (bool) {
         (bool ok,) = address(bank).call(abi.encodeCall(bank.deposit, (1, keccak256("nested"))));
         blocked = !ok;
         return true;
     }
 
+    /// @notice 按开关返回成功或失败，模拟 Token 不抛异常却返回 false 的情况。
     function transfer(address, uint256) external view returns (bool) {
         return !failTransfer;
     }
 }
 
 contract IdempotentTokenBankSafetyTest {
+    /// @notice 重入不能留下新操作号；外部转币返回 false 时，可提余额和本次编号都恢复。
     function testReentrancyAndFailedWithdrawalRollback() public {
         CallbackToken token = new CallbackToken();
         IdempotentTokenBank bank = new IdempotentTokenBank(address(token));

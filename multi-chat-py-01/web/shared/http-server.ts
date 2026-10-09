@@ -24,6 +24,7 @@ export function errorResponse(error: unknown) {
   return Response.json({ error: "服务器内部错误" }, { status: 500 })
 }
 
+/** 在路由边界解析 JSON 并拒绝数组、空值和非法正文，各字段继续由具体接口校验。 */
 export async function readJsonObject(request: Request) {
   const value: unknown = await request.json().catch(() => null)
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -32,6 +33,7 @@ export async function readJsonObject(request: Request) {
   return value as Record<string, unknown>
 }
 
+/** 把外部编号限定为 1～128 个允许字符，避免异常长或含路径字符的值进入业务层。 */
 export function requiredIdentifier(value: unknown, name: string) {
   if (
     typeof value !== "string" ||

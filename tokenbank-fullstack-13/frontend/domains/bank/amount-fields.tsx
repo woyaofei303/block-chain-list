@@ -31,6 +31,7 @@ export function AmountFields({
 }: AmountFieldsProps): JSX.Element {
   const deposit = action === "deposit"
   const symbol = snapshot?.symbol ?? "TOKEN"
+  /** 只在展示时按合约精度移动小数点，计算仍用 bigint；6 位精度的 1250000 显示为 1.25。 */
   const formatted = (value: bigint) => formatUnits(value, snapshot?.decimals ?? 18)
   const walletLabel = account ? shortAddress(account) : "我的钱包"
   const recipient = deposit ? "Token Bank" : walletLabel

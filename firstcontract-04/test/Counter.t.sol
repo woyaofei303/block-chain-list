@@ -4,6 +4,7 @@ pragma solidity 0.8.24;
 import {Counter} from "../contracts/Counter.sol";
 
 contract CounterTest {
+    /// @notice 连续加 5、3、0 得到 8；再验证溢出失败后仍保留失败前的最大值。
     function testCounter() public {
         Counter counter = new Counter();
         require(counter.get() == 0, "initial value must be zero");
@@ -15,6 +16,7 @@ contract CounterTest {
         require(counter.counter() == 8, "public counter must match get");
 
         counter.add(type(uint256).max - 8);
+        // 用低级调用捕获预期失败，测试才能继续检查错误类型和回滚后的数值。
         (bool ok, bytes memory reason) = address(counter).call(abi.encodeCall(Counter.add, (1)));
         require(!ok, "overflow must revert");
         require(

@@ -9,6 +9,7 @@ import type {
   TransferScope,
 } from './types.ts'
 
+/** 先验证地址与分页参数，再查数据库并按代币精度格式化金额；HTTP 查询不临时补扫链。 */
 export function createTransfersRouter(
   db: Pick<Pool, 'query'>,
   config: TransferScope,

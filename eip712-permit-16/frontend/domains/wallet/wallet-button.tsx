@@ -6,6 +6,7 @@ import { useConnect, useConnection, useConnectors, useDisconnect } from "wagmi"
 import { targetChain } from "@/domains/wallet/config"
 import { errorMessage, shortAddress } from "@/shared/web3"
 
+/** 让用户选择具体钱包并查看连接状态；连接只取得公开地址，资产操作由存取款流程另行请求确认。 */
 export function WalletButton({
   className = "rounded-[30px] border border-[#ffe2f6] bg-[#fff0fa] px-[18px] py-2.5 text-[14px] font-semibold whitespace-nowrap text-[#dd08a1] hover:bg-[#ffe2f6] mobile:px-3 mobile:py-[9px] mobile:text-[12px]",
 }: {

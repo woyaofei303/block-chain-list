@@ -16,12 +16,14 @@ export type Operation = OperationInput & {
 export class OperationError extends Error {
   status: number
   code: string
+  /** 让路由能同时返回 HTTP 状态、稳定错误码与可读原因，数据库异常则仍交给统一错误处理。 */
   constructor(status: number, code: string, message: string) {
     super(message)
     this.status = status
     this.code = code
   }
 }
+/** 把存取方向和最小单位金额编码成指纹；同一操作编号不能把“存 10”偷偷改成“存 20”。 */
 export function payloadHash(action: OperationInput['action'], amount: string) {
   return keccak256(
     encodeAbiParameters(
@@ -31,6 +33,7 @@ export function payloadHash(action: OperationInput['action'], amount: string) {
   )
 }
 const columns = `account, operation_id AS "operationId", chain_id::int AS "chainId", bank_address AS "bankAddress", action, amount_raw::text AS "amountRaw", payload_hash AS "payloadHash", start_block::text AS "startBlock"`
+/** 只在当前登录账户下找操作编号，避免凭一个编号读取别人的操作。 */
 export async function getOperation(
   db: Pick<Pool, 'query'>,
   account: Address,
@@ -44,6 +47,7 @@ export async function getOperation(
     throw new OperationError(404, 'OPERATION_NOT_FOUND', '操作不存在')
   return rows[0]
 }
+/** 在事务中登记或复用操作；相同编号、相同参数返回原记录，参数冲突则整笔回滚。 */
 export async function createOperation(
   db: Pool,
   account: Address,
@@ -89,6 +93,7 @@ export async function createOperation(
   }
 }
 
+/** 保存一次登录随机数，5 分钟后失效；签名验证会检查它，防止旧登录消息反复使用。 */
 export async function addChallenge(db: Pool, nonce: string, address: string) {
   await db.query('DELETE FROM auth_challenges WHERE expires_at < now()')
   await db.query(
@@ -96,6 +101,7 @@ export async function addChallenge(db: Pool, nonce: string, address: string) {
     [nonce, address.toLowerCase()],
   )
 }
+/** 只返回尚未过期的登录请求；找不到时由认证路由拒绝本次签名。 */
 export async function getChallenge(db: Pool, nonce: string | undefined) {
   const { rows } = await db.query<{ address: Address; expires_at: Date }>(
     'SELECT address, expires_at FROM auth_challenges WHERE nonce=$1 AND expires_at > now()',
@@ -103,6 +109,7 @@ export async function getChallenge(db: Pool, nonce: string | undefined) {
   )
   return rows[0]
 }
+/** 一次事务中消费随机数并建立 12 小时会话；并发重放只能有一方成功，失败时两步一起回滚。 */
 export async function establishSession(
   db: Pool,
   nonce: string | undefined,
@@ -131,6 +138,7 @@ export async function establishSession(
     client.release()
   }
 }
+/** 用 Cookie 的哈希查有效会话，数据库不保存 Cookie 原文；过期后要求重新登录。 */
 export async function sessionAccount(db: Pool, tokenHash: string) {
   const { rows } = await db.query<{ address: Address }>(
     'SELECT address FROM auth_sessions WHERE token_hash=$1 AND expires_at > now()',
@@ -140,6 +148,7 @@ export async function sessionAccount(db: Pool, tokenHash: string) {
     throw new OperationError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录')
   return rows[0].address
 }
+/** 取出该操作已上报的交易哈希；这些只是查询线索，不能直接当作存取款成功的证据。 */
 export async function transactionHints(
   db: Pick<Pool, 'query'>,
   operation: Operation,
@@ -150,6 +159,7 @@ export async function transactionHints(
   )
   return rows.map((row) => row.transaction_hash)
 }
+/** 锁住操作行后去重并最多保留 16 个哈希，避免并发上报绕过数量限制；不在这里判断链上成败。 */
 export async function recordTransaction(
   db: Pool,
   operation: Operation,

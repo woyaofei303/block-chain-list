@@ -7,6 +7,7 @@ import {JulianToken} from "../src/JulianToken.sol";
 import {IdempotentTokenBank} from "../src/IdempotentTokenBank.sol";
 
 contract DeploySepoliaTest is Test {
+    /// @notice 用本地虚拟机检查网络和依赖门槛；拒绝必须发生在部署前，成功后只增加两次部署 nonce。
     function testDeploymentGuardsAndConfiguration() public {
         DeploySepolia script = new DeploySepolia();
         address deployer = makeAddr("deployer");

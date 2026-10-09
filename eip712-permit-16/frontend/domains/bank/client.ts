@@ -116,6 +116,7 @@ export function createBank(
   signal?: AbortSignal
 ) {
   if (!isAddress(bank) || bank === zeroAddress) throw new Error("请输入有效的银行合约地址")
+  /** 取消只阻止后续步骤与读结果更新，无法撤销钱包已经发出的交易。 */
   const check = () => signal?.throwIfAborted()
   // 扩展钱包的 RPC 不经过 shared/request 的 HTTP 队列；取消后丢弃读结果并阻止后续步骤。
   const transport = custom(
@@ -144,6 +145,7 @@ export function createBank(
     if (network !== chainId) throw new Error("钱包网络不匹配，请切换网络")
   }
 
+  /** 核对会话后读取代币、个人余额和银行总资产；总资产属于所有存款人，不能当作个人可取额度。 */
   async function read(): Promise<Snapshot> {
     await assertSession()
     const token = await client.readContract({
@@ -230,6 +232,7 @@ export function createBank(
     }
   }
 
+  /** 核对钱包原子批量能力与指定 Delegator 代码；“支持批量”还不够，当前账户的委托目标也必须匹配。 */
   async function batchCapability() {
     await assertSession()
     const capabilities = await wallet.getCapabilities({ account, chainId })
@@ -289,6 +292,7 @@ export function createBank(
     })
   }
 
+  /** 恢复已有交易或按需走授权、存取款和回执；例如存 10 个币，要先给银行足够额度，再真正转入资产。 */
   async function transact(
     action: "deposit" | "withdraw",
     text: string,
@@ -420,6 +424,7 @@ export function createBank(
       operation.onBroadcast("business", hash)
       return hash
     }
+    /** 签名前再核对钱包，返回哈希后立刻交给上层保存，再检查取消，避免已发送却丢失线索。 */
     async function broadcast(
       request: Parameters<typeof wallet.writeContract>[0],
       stage: "approval" | "business"

@@ -23,6 +23,7 @@ export type Conversation = {
 
 export type ConversationSummary = Pick<Conversation, "id" | "title">
 
+/** 第一条消息压缩空白后取前 36 字作标题，空文本回退“新对话”，不改变消息正文。 */
 export function titleFromPrompt(prompt: string) {
   const title = prompt.replace(/\s+/g, " ").trim()
   return title.length > 36 ? `${title.slice(0, 36)}…` : title || "新对话"

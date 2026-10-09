@@ -40,6 +40,7 @@ export async function POST(request: Request, context: Context) {
   }
 }
 
+/** 拒绝空白或超过 32000 字符的消息；保留原文本交给会话仓库规范化，不在路由里调用模型。 */
 function validContent(value: unknown) {
   if (typeof value !== "string" || !value.trim()) {
     throw new Error("消息不能为空")

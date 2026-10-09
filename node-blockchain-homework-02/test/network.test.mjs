@@ -8,6 +8,7 @@ import { poll, requestJson } from "../demo.mjs"
 import { createTransaction } from "../src/blockchain.mjs"
 import { createNode } from "../src/node.mjs"
 
+/** 给异步节点传播留出有限时间，轮询达到条件就结束，超时输出当前测试的具体原因。 */
 async function waitFor(predicate, message, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -17,6 +18,7 @@ async function waitFor(predicate, message, timeoutMs = 3000) {
   assert.fail(message)
 }
 
+/** 向本地测试节点提交 JSON，省去每个场景重复组装请求头。 */
 async function post(url, body) {
   const response = await fetch(url, {
     method: "POST",
@@ -26,10 +28,12 @@ async function post(url, body) {
   return response.json()
 }
 
+/** 读取本地节点当前链或内存池，断言观察到的状态而不只看广播是否调用。 */
 async function get(url) {
   return (await fetch(url)).json()
 }
 
+/** 最多等待一秒建立测试连接，成功与失败都清掉超时计时器。 */
 async function openSocket(url) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url)
@@ -45,6 +49,7 @@ async function openSocket(url) {
   })
 }
 
+// 先让一个节点落后，再连接同步并发送新交易，观察双方最终链与内存池。
 test("落后节点同步链并接收实时交易和区块", async (context) => {
   const nodeA = createNode({ name: "node-a", port: 0, difficulty: 1, logger: null })
   const nodeB = createNode({ name: "node-b", port: 0, difficulty: 1, logger: null })
@@ -78,6 +83,7 @@ test("落后节点同步链并接收实时交易和区块", async (context) => {
   assert.equal(nodeB.state.mempool.length, 0)
 })
 
+// 通过 WebSocket 发送坏链，检查本地有效链不被覆盖。
 test("P2P 拒绝无效链", async (context) => {
   const node = createNode({ name: "victim", port: 0, difficulty: 1, logger: null })
   await node.start()
@@ -99,6 +105,7 @@ test("P2P 拒绝无效链", async (context) => {
   assert.equal(node.state.chain.at(-1).hash, originalTip)
 })
 
+// 同一连接先发坏消息再发合法交易，验证异常隔离只丢弃当前消息。
 test("P2P 记录坏消息并在同一连接继续接收有效交易", async (context) => {
   const errors = []
   const node = createNode({
@@ -134,6 +141,7 @@ test("P2P 记录坏消息并在同一连接继续接收有效交易", async (con
   assert.deepEqual(node.state.mempool, [transaction])
 })
 
+// 用三节点连接检查中继更新后会通知下游，避免链只同步到一半。
 test("中继节点同步后通知下游节点拉取链", async (context) => {
   const nodeA = createNode({ name: "node-a", port: 0, difficulty: 1, logger: null })
   const nodeB = createNode({ name: "node-b", port: 0, difficulty: 1, logger: null })
@@ -154,6 +162,7 @@ test("中继节点同步后通知下游节点拉取链", async (context) => {
   )
 })
 
+// 先发伪造内容再发相同哈希的合法区块，检查坏数据没有提前占用去重标记。
 test("无效区块不阻止同 hash 的有效区块", async (context) => {
   const miner = createNode({ name: "miner", port: 0, difficulty: 1, logger: null })
   const victim = createNode({ name: "victim", port: 0, difficulty: 1, logger: null })
@@ -177,6 +186,7 @@ test("无效区块不阻止同 hash 的有效区块", async (context) => {
   )
 })
 
+// 尚未启动监听的节点也可能主动连出，stop 必须清掉这种连接。
 test("未启动节点 stop 会关闭其已建立的 outbound socket", async (context) => {
   const remote = createNode({ name: "remote", port: 0, difficulty: 1, logger: null })
   const local = createNode({ name: "local", port: 0, difficulty: 1, logger: null })
@@ -189,6 +199,7 @@ test("未启动节点 stop 会关闭其已建立的 outbound socket", async (con
   await waitFor(() => get(`${remote.httpUrl}/status`).then((status) => status.peers === 0), "stop 留下 outbound socket")
 })
 
+// 重启实例后重新连接 P2P，检查监听器没有沿用已关闭的服务。
 test("节点重启后仍接受 P2P 连接", async (context) => {
   const node = createNode({ name: "restart", port: 0, difficulty: 1, logger: null })
   await node.start()
@@ -201,6 +212,7 @@ test("节点重启后仍接受 P2P 连接", async (context) => {
   assert.equal((await get(`${node.httpUrl}/status`)).peers, 1)
 })
 
+// 通过子进程观察 READY 输出，让演示脚本能等服务真正就绪再调用。
 test("节点 CLI 启动后打印 READY", async () => {
   const child = spawn(process.execPath, [
     "src/node.mjs",
@@ -231,6 +243,7 @@ test("节点 CLI 启动后打印 READY", async () => {
   }
 })
 
+// 给 CLI 非法 peer 地址，检查启动前即拒绝，而不是运行后反复连接失败。
 test("节点 CLI 拒绝非法 peer", async (context) => {
   for (const peer of ["http://127.0.0.1:3001/p2p", "not a URL"]) {
     await context.test(peer, async () => {
@@ -266,6 +279,7 @@ test("节点 CLI 拒绝非法 peer", async (context) => {
   }
 })
 
+// 制造单次请求过慢，检查演示轮询受总截止时间约束。
 test("demo 轮询不会让慢请求突破总超时", async (context) => {
   const server = createServer((_, response) => {
     setTimeout(() => response.end("{}"), 250)

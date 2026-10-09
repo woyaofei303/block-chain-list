@@ -2,12 +2,14 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { createNode } from "../src/node.mjs"
 
+/** 同时返回 HTTP 状态和 JSON 正文，让测试能区分请求失败与业务返回值。 */
 async function request(url, options) {
   const response = await fetch(url, options)
   const body = await response.json()
   return { status: response.status, body }
 }
 
+// 通过真实本地 HTTP 提交和挖矿，再读取结果，检查接口与链状态确实接通。
 test("HTTP API 提交交易并挖矿", async (context) => {
   const node = createNode({ name: "http-test", port: 0, difficulty: 1, logger: null })
   await node.start()
@@ -47,6 +49,7 @@ test("HTTP API 提交交易并挖矿", async (context) => {
   })
 })
 
+// 观察挖矿前的待处理列表，区分内存池与已经入块的交易。
 test("GET /mempool 返回尚未打包的交易", async (context) => {
   const node = createNode({ port: 0, difficulty: 1, logger: null })
   await node.start()
@@ -63,6 +66,7 @@ test("GET /mempool 返回尚未打包的交易", async (context) => {
   assert.deepEqual(mempool.body.transactions, [accepted.body.transaction])
 })
 
+// 分别发送边界内外的正文，检查过大请求被拒绝，节点还能正常处理后续请求。
 test("HTTP 请求体边界为 64 KiB", async (context) => {
   const node = createNode({ port: 0, difficulty: 1, logger: null })
   await node.start()
@@ -87,6 +91,7 @@ test("HTTP 请求体边界为 64 KiB", async (context) => {
   assert.deepEqual(oversized.body, { error: "请求体不能超过 64 KiB" })
 })
 
+// 发送破损 JSON 与不存在的路径，检查得到明确状态而不是未捕获异常。
 test("HTTP API 拒绝错误 JSON 和未知路由", async (context) => {
   const node = createNode({ port: 0, difficulty: 1, logger: null })
   await node.start()
@@ -103,6 +108,7 @@ test("HTTP API 拒绝错误 JSON 和未知路由", async (context) => {
   assert.equal(missing.status, 404)
 })
 
+// 同一实例启动、停止再启动，检查旧端口地址和连接资源没有残留。
 test("HTTP 节点可重复启停且停止后不保留地址", async () => {
   const node = createNode({ port: 0, difficulty: 1, logger: null })
   await node.start()
@@ -117,14 +123,17 @@ test("HTTP 节点可重复启停且停止后不保留地址", async () => {
   for (let index = 0; index < 11; index += 1) await node.stop()
 })
 
+// 用会抛异常的 logger 启动节点并触发错误，证明日志失败不影响服务响应。
 test("logger 抛错不影响节点启动或 500 响应", async (context) => {
   const node = createNode({
     port: 0,
     difficulty: 1,
     logger: {
+      /** 模拟同步日志故障，节点启动不能被非核心日志拖垮。 */
       info() {
         throw new Error("日志启动失败")
       },
+      /** 让错误日志自己也失败，检查 HTTP 仍返回受控的 500。 */
       error() {
         throw new Error("日志错误失败")
       },
@@ -145,8 +154,10 @@ test("logger 抛错不影响节点启动或 500 响应", async (context) => {
   assert.equal(response.body.error, "服务器内部错误")
 })
 
+// 改用返回拒绝 Promise 的 logger，检查它同样不会留下未处理异常。
 test("async logger 拒绝不影响节点启动或 500 响应", async (context) => {
   const rejections = []
+  /** 收集未处理的 Promise 拒绝，检查异步日志失败是否被节点内部消化。 */
   const onUnhandledRejection = (error) => rejections.push(error)
   process.on("unhandledRejection", onUnhandledRejection)
   context.after(() => process.off("unhandledRejection", onUnhandledRejection))
@@ -155,9 +166,11 @@ test("async logger 拒绝不影响节点启动或 500 响应", async (context) =
     port: 0,
     difficulty: 1,
     logger: {
+      /** 模拟异步启动日志失败，必须被捕获而不能成为未处理拒绝。 */
       async info() {
         throw new Error("异步日志启动失败")
       },
+      /** 模拟异步错误日志失败，检查错误响应与进程都能正常收尾。 */
       async error() {
         throw new Error("异步日志错误失败")
       },

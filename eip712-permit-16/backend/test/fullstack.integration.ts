@@ -42,6 +42,7 @@ const usePermit2 = process.env.TEST_PERMIT2 === '1'
 const usePermit = process.env.TEST_PERMIT === '1' && !usePermit2
 const authorization = usePermit2 ? 'permit2' : usePermit ? 'permit' : 'approve'
 
+// 把本地合约执行、索引入库与 HTTP 返回连起来，逐层核对实际余额和可恢复的操作记录。
 test(`${authorization}：本项目合约 → 存取款 → PostgreSQL → Express → 前端代理与记录形成闭环`, {
   timeout: 60_000,
 }, async (t) => {
@@ -111,6 +112,7 @@ test(`${authorization}：本项目合约 → 存取款 → PostgreSQL → Expres
   }
   const [deployer, account, other] = await wallet.getAddresses()
   const contracts = fileURLToPath(new URL('../../contracts/', import.meta.url))
+  /** 从本项目编译产物读取合约字节码，测试用新实例，避免依赖历史部署状态。 */
   const bytecode = (name: string): Hex =>
     execFileSync(
       'forge',
@@ -154,6 +156,7 @@ test(`${authorization}：本项目合约 → 存取款 → PostgreSQL → Expres
   })
   const address = bankReceipt.contractAddress
   assert.ok(address)
+  /** 给本地测试账户分配代币并等待回执，后续存款使用实际到账余额。 */
   const fund = async (amount: bigint) =>
     rpc.waitForTransactionReceipt({
       hash: await wallet.writeContract({
@@ -275,6 +278,7 @@ test(`${authorization}：本项目合约 → 存取款 → PostgreSQL → Expres
   // 真正签名登录，身份来自会话；并发 HTTP 重放只创建一条持久记录。
   const origin = 'http://localhost:3189'
   let cookie = ''
+  /** 用本次登录 Cookie 和来源调用测试 API；提供编号时才附带幂等键，便于覆盖冲突场景。 */
   const call = (path: string, body?: unknown, key?: string) =>
     fetch(`${base}${path}`, {
       method: body === undefined ? 'GET' : 'POST',

@@ -7,6 +7,7 @@ import { parseAmount } from "../domains/bank/client.ts"
 import { loadTransfers } from "../domains/transfers/client.ts"
 import { errorMessage } from "../shared/web3.ts"
 
+// 构造钱包拒绝错误，检查页面提示没有把连接失败说成代币授权失败。
 test("连接或切换网络被拒绝时，不误报为 Token 授权", () => {
   const rejected = new BaseError("Switch failed", {
     cause: new UserRejectedRequestError(new Error("User rejected")),
@@ -15,6 +16,7 @@ test("连接或切换网络被拒绝时，不误报为 Token 授权", () => {
   assert.equal(errorMessage(new BaseError("RPC unavailable")), "RPC unavailable")
 })
 
+// 以最小单位断言换算结果；超出精度直接拒绝，不能先舍入再转账。
 test("金额保留最小单位精度，拒绝零、负数、超精度和超额输入", () => {
   assert.equal(parseAmount("1.000001", 6, 2_000_000n), 1_000_001n)
   assert.equal(parseAmount("0.000000000000000001", 18, 1n), 1n)
@@ -24,6 +26,7 @@ test("金额保留最小单位精度，拒绝零、负数、超精度和超额�
   }
 })
 
+// 用假 HTTP 响应检查金额与分页，并故意换链或代币，确保错误数据不会显示。
 test("转账 API 保留精确金额及分页，拒绝混用网络或 Token", async (t) => {
   const token = `0x${"a".repeat(40)}` as const
   const account = `0x${"b".repeat(40)}` as const
@@ -88,6 +91,7 @@ test("转账 API 保留精确金额及分页，拒绝混用网络或 Token", asy
   await assert.rejects(loadTransfers(endpoint, expected), /503/)
 })
 
+// 修改本地恢复记录，检查旧编号能继续使用，而账户变化或损坏记录不能变成一笔新交易。
 test("刷新恢复保留操作编号与交易阶段，账户和网络隔离，损坏记录不能静默生成新操作", async () => {
   const { newOperationId, saveIntent, restoreIntent } = await import(
     "../domains/operations/client.ts"
@@ -120,6 +124,7 @@ test("刷新恢复保留操作编号与交易阶段，账户和网络隔离，�
   assert.throws(() => restoreIntent(storage, account, 31337, bank))
 })
 
+// 只有本次已确认的意图能被清除，另一个标签页写入的新意图必须保留。
 test("成功后释放当前操作的恢复记录，未确认或其他操作的记录不能清除", async () => {
   const { clearConfirmedIntent, newOperationId, saveIntent, restoreIntent } = await import(
     "../domains/operations/client.ts"
@@ -144,6 +149,7 @@ test("成功后释放当前操作的恢复记录，未确认或其他操作的�
     amountRaw: "20000000000000000000",
     phase: "unknown" as const,
   }
+  /** 始终按同一账户、网络和银行恢复，下面修改存储来检查隔离与损坏输入。 */
   const restore = () => restoreIntent(storage, intent.account, intent.chainId, intent.bankAddress)
   saveIntent(storage, intent)
   assert.throws(() => clearConfirmedIntent(storage, intent), /尚未确认/)

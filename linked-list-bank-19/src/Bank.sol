@@ -8,7 +8,7 @@ contract Bank {
     address public immutable admin;
     // 所有存款人的累计金额（Wei），落榜和管理员提款都不清零。
     mapping(address => uint256) public deposits;
-    // 零地址是哨兵：next[0] 指向第一名，尾节点的 next 为 0。
+    // 零地址只当入口：若 A 第一、B 第二，则 next[0]=A、next[A]=B、next[B]=0。
     mapping(address => address) public next;
     uint256 public size;
     bool private withdrawing;

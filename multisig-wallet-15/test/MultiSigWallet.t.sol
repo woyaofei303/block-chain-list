@@ -5,8 +5,11 @@ import {MultiSigWallet} from "../src/MultiSigWallet.sol";
 
 // 沿用仓库的无第三方测试库方式，只声明实际需要的 cheatcode。
 interface WalletVm {
+    /// @notice 仅在测试虚拟机中直接设置账户 ETH 余额，不代表真实转账。
     function deal(address account, uint256 balance) external;
+    /// @notice 把下一次调用的发送者临时换成指定地址；不会取得真实钱包私钥。
     function prank(address sender) external;
+    /// @notice 要求下一次调用按指定原因失败；没有失败或原因不符都会让测试失败。
     function expectRevert(bytes calldata reason) external;
 }
 
@@ -15,10 +18,12 @@ contract CallTarget {
     address public caller;
     bool public reject;
 
+    /// @notice 控制测试目标是否拒绝执行，用来观察失败回滚和恢复后重试。
     function setReject(bool value) external {
         reject = value;
     }
 
+    /// @notice 记录传入数字与直接调用者，并接收 ETH；reject 开启时整次拒绝。
     function record(uint256 value) external payable {
         require(!reject, "Target rejected");
         number = value;
@@ -30,6 +35,7 @@ contract ReentrantRecipient {
     uint256 public calls;
     bool public reentrySucceeded;
 
+    /// @notice 收款时尝试再次执行 0 号提案，记录重入是否被阻止。
     receive() external payable {
         calls++;
         if (calls == 1) {
@@ -47,6 +53,7 @@ contract MultiSigWalletTest {
     address private constant DAVE = address(0xDA7E);
     MultiSigWallet private wallet;
 
+    /// @notice 每项测试新建三人两票钱包，并给钱包准备 2 ETH，互不共享状态。
     function setUp() public {
         wallet = new MultiSigWallet(_owners(), 2);
         vm.deal(address(this), 10 ether);
@@ -54,6 +61,7 @@ contract MultiSigWalletTest {
         require(funded && address(wallet).balance == 2 ether, "Wallet funding failed");
     }
 
+    /// @notice 检查固定名单与门槛，并拒绝空名单、重复地址、零地址及不可能的票数。
     function testConstructorValidatesOwnersAndThreshold() public {
         require(wallet.required() == 2, "Wrong threshold");
         require(keccak256(abi.encode(wallet.getOwners())) == keccak256(abi.encode(_owners())), "Wrong owners");
@@ -78,6 +86,7 @@ contract MultiSigWalletTest {
         new MultiSigWallet(members, 2);
     }
 
+    /// @notice 提交不计票，一票不能付，两票后非持有人也可执行；同一提案不能付两次。
     function testEthTransferPermissionsThresholdAndReplay() public {
         vm.expectRevert(bytes("Not owner"));
         wallet.submitTransaction(DAVE, 1 ether, "");
@@ -119,6 +128,7 @@ contract MultiSigWalletTest {
         require(DAVE.balance == 1 ether, "Proposal paid twice");
     }
 
+    /// @notice 零收款地址和不存在的提案编号应被拒绝，不能产生半份提案。
     function testInvalidProposalInputs() public {
         vm.expectRevert(bytes("Invalid destination"));
         vm.prank(ALICE);
@@ -132,6 +142,7 @@ contract MultiSigWalletTest {
         wallet.executeTransaction(type(uint256).max);
     }
 
+    /// @notice 不同提案分别计票；达到门槛后仍可继续确认，但不能重复计同一人的票。
     function testConfirmationsArePerProposalAndCanExceedThreshold() public {
         uint256 first = _submit(DAVE, 0, "");
         uint256 second = _submit(DAVE, 0, "");
@@ -155,6 +166,7 @@ contract MultiSigWalletTest {
         _assertState(second, false, 1);
     }
 
+    /// @notice 核对金额、编码参数和调用身份都传给目标，目标看到的是钱包合约。
     function testContractCallForwardsValueDataAndWalletIdentity() public {
         CallTarget target = new CallTarget();
         bytes memory data = abi.encodeCall(CallTarget.record, (42));
@@ -168,6 +180,7 @@ contract MultiSigWalletTest {
         _assertState(txId, true, 2);
     }
 
+    /// @notice 目标拒绝时资产与目标状态回滚、原投票保留；解除拒绝后同提案可重试。
     function testRevertedCallPreservesConfirmationsAndCanRetry() public {
         CallTarget target = new CallTarget();
         target.setReject(true);
@@ -186,6 +199,7 @@ contract MultiSigWalletTest {
         require(target.number() == 42 && address(target).balance == 1 ether, "Retry failed");
     }
 
+    /// @notice 提案要付 3 ETH、钱包只有 2 ETH 时失败；补足 1 ETH 后不用重新投票。
     function testInsufficientBalanceCanRetryAfterFunding() public {
         uint256 txId = _submit(DAVE, 3 ether, "");
         _approve(txId);
@@ -201,6 +215,7 @@ contract MultiSigWalletTest {
         require(DAVE.balance == 3 ether && address(wallet).balance == 0, "Retry did not spend full balance");
     }
 
+    /// @notice 收款回调重入同一提案须失败，只能发生一次付款。
     function testSameProposalCannotReenter() public {
         ReentrantRecipient recipient = new ReentrantRecipient();
         uint256 txId = _submit(address(recipient), 1 ether, "");
@@ -211,6 +226,7 @@ contract MultiSigWalletTest {
         _assertState(txId, true, 2);
     }
 
+    /// @notice 分别覆盖一人一票和三人全票，不能把常用的两票门槛写死在逻辑中。
     function testSingleOwnerAndUnanimousThresholds() public {
         address[] memory soleOwner = new address[](1);
         soleOwner[0] = ALICE;
@@ -232,6 +248,7 @@ contract MultiSigWalletTest {
         _assertState(txId, true, 3);
     }
 
+    /// @notice 提供固定的 Alice、Bob、Carol 名单，便于各测试对照账户身份。
     function _owners() private pure returns (address[] memory members) {
         members = new address[](3);
         members[0] = ALICE;
@@ -239,11 +256,13 @@ contract MultiSigWalletTest {
         members[2] = CAROL;
     }
 
+    /// @notice 模拟 Alice 提交提案并返回真实编号；此辅助步骤不附带确认票。
     function _submit(address to, uint256 value, bytes memory data) private returns (uint256) {
         vm.prank(ALICE);
         return wallet.submitTransaction(to, value, data);
     }
 
+    /// @notice 模拟 Alice 和 Bob 各确认一次指定提案，凑齐常用的两票门槛。
     function _approve(uint256 txId) private {
         vm.prank(ALICE);
         wallet.confirmTransaction(txId);
@@ -251,6 +270,7 @@ contract MultiSigWalletTest {
         wallet.confirmTransaction(txId);
     }
 
+    /// @notice 同时核对执行标记和票数，避免只看余额而漏掉提案状态错误。
     function _assertState(uint256 txId, bool expectedExecuted, uint256 expectedCount) private view {
         (,,, bool executed, uint256 count) = wallet.transactions(txId);
         require(executed == expectedExecuted && count == expectedCount, "Unexpected proposal state");

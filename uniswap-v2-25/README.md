@@ -1,8 +1,20 @@
-# Uniswap V2：从部署到兑换，按调用流程跑一遍
+# 25 · Uniswap V2：把两种币放进池子，再完成一次兑换
 
-本指南面向会基础 Solidity、第一次部署 Uniswap V2 的读者。你会完成一条主线：**部署合约并加池 → 用 100 A 换 B → 交还 LP、取回双币**。每一步都能对应到源码和余额变化。
+这个项目从本地部署开始，完成“加入 10,000 A 和 20,000 B → 用 100 A 换 B → 交还 LP 取回双币”。没有前端，也不需要真实钱包或资金。
 
-先看 [调用流程文章](SOURCE_WALKTHROUGH.md)，再照下面操作。原题参考 [Learn-DeFi-Project / Swap](https://github.com/lbc-team/Learn-DeFi-Project/tree/Swap)；本工程完成合约部分，不需要前端或浏览器钱包。源码版本、许可证与修改范围见 [UPSTREAM.md](UPSTREAM.md)。
+第一次接触时，先读 [07 的 ERC20 授权](../tokenbank-07/README.md) 和 [09 的 Foundry](../foundry-counter-09/README.md)。下面先给直观例子；调用和公式的详细推导放在 [SOURCE_WALKTHROUGH](SOURCE_WALKTHROUGH.md)，不必第一次就全部读完。
+
+## 先预测一笔兑换的结果
+
+池子最初有 10,000 A、20,000 B，看起来比例是 1:2。但拿 100 A 来换，不会固定给你 200 B：换走 B 的同时，池内 A 增多、B 变少，兑换比例会变化，还会计入 0.3% 手续费。
+
+按本项目的整数公式，100 A 可得到约 `197.431606879412259770 B`。池内 A 变 10,100，B 相应减少；发起者钱包变化相反。后面的命令会让你逐项核对这几个数。
+
+“流动性”就是池子中可供兑换的资产。提供双币后收到的 LP 代币代表池子份额；交还 LP 才能按当时储备取回双币。兑换后储备比例变化，因此不保证取回原来完全相同的两种数量。
+
+“滑点下限”是你愿意至少收到多少，而不是页面保证的价格；“期限”是这笔请求最晚何时有效。条件不满足应整笔回滚，避免无条件接受变化后的价格。
+
+本轮补充源码注释后已重新构建、同步 Pair 哈希并通过 19 项 Forge 测试；未重新部署。文末另保留上轮部署的实测范围。源码来源和固定版本见 [UPSTREAM](UPSTREAM.md)。
 
 ## 先记住这几个名字
 
@@ -18,7 +30,7 @@
 需要 `forge`、`cast`、`anvil`、`jq`、`python3`。后两个工具只负责提取 JSON 和进行精确整数计算，不是合约依赖。下面以当前电脑的路径为例，其他电脑替换为自己的项目目录。
 
 ```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/uniswap-v2-25
+cd "$(git rev-parse --show-toplevel)/uniswap-v2-25"
 forge --version
 cast --version
 anvil --version
@@ -251,7 +263,7 @@ cast call "$TOKEN_B" 'balanceOf(address)(uint256)' "$ACCOUNT" --rpc-url "$RPC_UR
 本工程已经填入正确的本地哈希；第一次按指南操作时不需要改它。只有修改 Pair、其依赖、注释、路径或编译配置后，才需要重新检查。
 
 ```text
-0x7d0b5b3e4b9574ab8ad2c121c09ea744aa6aa2bc64800f628edacde6102eadaa
+0x82642c6d865b99fe40c91e09463a975507c3044c03dbddd272c88a0c8e92bf96
 ```
 
 Factory 和 Router 必须用同一个“创建字节码指纹”才能得到同一个 Pair 地址。先完成修改和格式化，再计算：

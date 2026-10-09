@@ -30,6 +30,7 @@ import {
 const token = '0x1111111111111111111111111111111111111111'
 const recipient = '0x2222222222222222222222222222222222222222'
 
+// 用边界输入检查金额、地址和错误脱敏，不需要读取钱包或连接网络。
 test('输入边界：精度、金额、地址、RPC 和错误脱敏', () => {
   assert.equal(amount('1.000001', 6), 1000001n)
   assert.equal(
@@ -55,6 +56,7 @@ test('输入边界：精度、金额、地址、RPC 和错误脱敏', () => {
   assert.match(safeError({ code: 'EEXIST' }), /未覆盖/)
 })
 
+// 使用临时加密钱包与假 RPC 跑完整流程，重点检查广播超时后已有哈希记录可供查询。
 test('加密钱包 → 构建 ERC20 type 2 → 签名恢复 → 广播前日志及失败状态', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'cli-wallet-test-'))
   const file = join(directory, 'keystore.json')
@@ -216,6 +218,7 @@ test('加密钱包 → 构建 ERC20 type 2 → 签名恢复 → 广播前日志�
   assert.equal(send.mock.callCount(), 1)
 })
 
+// 以子进程运行 CLI，检查帮助、参数拒绝与非交互限制，敏感参数不能回显到错误输出。
 test('CLI 帮助、非法参数和非交互创建', () => {
   const cli = new URL('../src/cli.ts', import.meta.url).pathname
   assert.match(

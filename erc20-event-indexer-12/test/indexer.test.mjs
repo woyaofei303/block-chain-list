@@ -9,8 +9,10 @@ import { scanOnce } from '../src/indexer.mjs'
 const token = `0x${'a'.repeat(40)}`
 const alice = `0x${'1'.repeat(40)}`
 const bob = `0x${'2'.repeat(40)}`
+/** 把小整数变成确定的测试区块哈希，用来模拟推进和重组，不访问公共链。 */
 const hash = (n) => `0x${BigInt(n).toString(16).padStart(64, '0')}`
 
+// 用测试链数据和隔离数据库检查明细、游标及重启续扫是否一致。
 test('扫块落库后，可通过 HTTP 查询收支、准确金额，并在重启后续扫', async (t) => {
   // 只创建、删除本次测试独有的 schema，不改动已保存的作业数据。
   const schema = `erc20_test_${process.pid}_${Date.now()}`

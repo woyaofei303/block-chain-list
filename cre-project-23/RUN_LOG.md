@@ -1,4 +1,12 @@
-# TokenBank CRE 本次模拟运行日志
+# TokenBank CRE 历史模拟运行日志
+
+## 先用 100、120、60 三个数字理解证据
+
+对照 [README](README.md)：存款恰好 100、阈值 100，应跳过；增加到 120 后应划出 60，银行和用户可提各剩 60。再次提交同一个报告应拒绝，而不是再划走 30。
+
+读下面日志时同时检查“收款人到账、银行资产、用户可提、nonce”，只有某一项变化不足以证明账实一致。本地交易哈希不能拿到 Sepolia 浏览器验证。
+
+本篇保留 2026-10-07 的原输出。SDK 测试 runtime 与真实生产 DON 是不同环境，CLI 单次 simulate 也不是已激活的定时任务；本次只重写阅读说明，未重新运行或上线。
 
 验证日期：2026-10-07（Asia/Shanghai）。Forge 1.8.1，Solidity 0.8.24 / Shanghai，Bun 1.4.2，CRE SDK 1.23.0，CRE CLI 1.37.0。所有资金操作均在独立 Anvil `chainId=31337` 上；没有公共链广播、Git 提交或推送。
 
@@ -86,7 +94,7 @@ Receiver: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
 - CLI 对配置路径有长度限制，临时使用 `/tmp/cre-tokenbank.UTQaiL/artifacts` 短路径软链接；没有更改仓库原 RPC、环境文件或凭证。
 - `--env /dev/null --public-env /dev/null` 避免读取项目密钥；中间一次账号认证失败，后续重试恢复。日志中的默认模拟 key 提示不表示使用了用户私钥，也没有广播公共交易。
 
-本次执行命令（临时节点及短路径链接在验证后已关闭/移除）：
+当时执行命令（临时节点及短路径链接在验证后已关闭/移除）：
 
 ```bash
 cre workflow simulate /tmp/cre-tokenbank.UTQaiL/artifacts/cli-project/my-workflow \
@@ -99,4 +107,4 @@ cre workflow simulate /tmp/cre-tokenbank.UTQaiL/artifacts/cli-project/my-workflo
 
 正式 Receiver 部署入口也在本地用非零 workflow ID 做了无广播模拟，退出 0，输出 `Script ran successfully`；记录在 `receiver-deploy-dry-run.log`。该次 Forge trace 报了源码解析/旧生成缓存提示，之后已通过 `forge build --force` 重建（15 个文件、编译成功），未修改第三方模板；这不代表完成了公共链部署。
 
-共享 pre-commit 已接入本次检查，shell 语法检查通过；未创建 Git 提交，因此未实际触发提交钩子。文档 107 个本地链接目标存在，`git diff --check` 通过，环境文件和临时日志均被忽略。
+共享 pre-commit 已接入当时的检查，shell 语法检查通过；未创建 Git 提交，因此未实际触发提交钩子。文档 107 个本地链接目标存在，`git diff --check` 通过，环境文件和临时日志均被忽略。

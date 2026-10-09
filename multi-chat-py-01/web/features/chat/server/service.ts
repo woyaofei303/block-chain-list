@@ -27,6 +27,7 @@ type ChatServiceOptions = {
 /** 编排会话和生成两个领域；领域内部不直接相互引用。 */
 export function createChatService(options: ChatServiceOptions) {
   return {
+    /** 先保存用户轮次或重试占位，再启动模型；重复 requestKey 仅返回已有任务。 */
     async sendMessage(
       conversationId: string,
       input: SendMessageCommand
@@ -57,6 +58,7 @@ export function createChatService(options: ChatServiceOptions) {
       return result
     },
 
+    /** 先停止并等待所有活跃生成写完终态，再删历史，防止后台任务写回已删除会话。 */
     async deleteConversation(conversationId: string) {
       const activeIds = await options.store.activeGenerationIds(conversationId)
       for (const generationId of activeIds) {

@@ -77,9 +77,11 @@ export async function request<T>(
   )
 }
 
+/** 提供可取消的轮询间隔；取消时同时清掉定时器，避免页面离开后仍继续下一次查询。 */
 export function wait(ms: number, signal?: AbortSignal) {
   signal?.throwIfAborted()
   return new Promise<void>((resolve, reject) => {
+    /** 结束本次等待并传递取消原因，业务层据此保留待核实状态。 */
     const cancel = () => {
       clearTimeout(timer)
       reject(signal?.reason)

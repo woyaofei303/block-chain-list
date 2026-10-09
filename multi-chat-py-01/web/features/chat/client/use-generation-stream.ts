@@ -16,6 +16,7 @@ import type { GenerationEvent } from "../../../domains/generation/model"
 import { fullJitterDelay } from "../../../shared/retry"
 import { applyGenerationEvent } from "./apply-generation-event"
 
+/** 订阅当前任务并更新会话缓存；切换会话会退订，重连沿用已处理的事件编号。 */
 export function useGenerationStream(
   conversationId: string | null,
   message: ChatMessage | undefined
@@ -44,6 +45,7 @@ export function useGenerationStream(
           ?.lastEventId ?? 0
       )
     }
+    /** 只把事件合并到对应生成消息；终态到达后停止订阅并重新获取已落盘的详情。 */
     const apply = (type: GenerationEvent["type"], event: MessageEvent) => {
       const id = Number(event.lastEventId)
       const data = JSON.parse(event.data) as Record<string, unknown>
@@ -73,6 +75,7 @@ export function useGenerationStream(
         ])
       }
     }
+    /** 带上缓存游标建立 SSE 连接；网络断线使用退避重连，业务错误事件则直接进入失败状态。 */
     const connect = () => {
       if (disposed) return
       // 不依赖 EventSource 固定的内建重连节奏：每次重建连接都带 after，

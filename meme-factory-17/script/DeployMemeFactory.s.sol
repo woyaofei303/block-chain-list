@@ -6,6 +6,7 @@ import {MemeFactory} from "../src/MemeFactory.sol";
 
 /// @notice 部署工厂及其共享实现；不加 --broadcast 时只模拟，不发送交易。
 contract DeployMemeFactory is Script {
+    /// @notice 由广播账户创建工厂，工厂再创建共享实现；返回的是工厂地址。
     function run() external returns (MemeFactory factory) {
         // 使用命令行指定的发送者/钱包，项目方收款地址是部署账户，不是脚本合约。
         // 脚本不读取私钥；本地 Anvil 可用 --sender 配合 --unlocked。

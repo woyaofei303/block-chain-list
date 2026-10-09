@@ -1,22 +1,24 @@
-# 从零运行与整体操作流程
+# 签名存款实操：先准备链，再把页面、索引接上
 
-新增 Permit2 功能见 [PERMIT2.md](PERMIT2.md)，新部署脚本会同时部署官方 Permit2。旧环境不自动升级；需要保留旧环境时按新指南使用独立端口。
+先读 [README](README.md)。本次学习分两条结果线：页面用 Permit 存 10 JUL；命令行用项目方白名单买 100 JUL 的 NFT。它们共用本地 Token，但签名目的不同。
 
-本指南只在本地 Anvil 演示，沿用已有实现，所有业务入口位于 `eip712-permit-16`。先看 [项目总览](README.md) 理解签名区别，再按下面顺序操作。每个新终端先进入同一项目目录；命令默认 Bash / Zsh。
+准备四个终端：A 保持 Anvil 运行，B 部署与准备资产，C 保持后端运行，D 保持前端运行。先完成第 1～4 节，再做第 5 节银行；第 6 节 NFT 是独立练习，不是存款前置条件。
 
-```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
-```
+每个终端先从仓库根目录进入 `eip712-permit-16`，再加载同一轮 session.env。第一次还没有配置时先创建链和部署；已有状态时直接走第 8 节恢复，不重复部署、铸造或充值。
+
+普通本地流程的 RPC / 后端 / 页面端口为 8547 / 13016 / 3016；[Permit2 专项指南](PERMIT2.md) 的新环境使用另一组端口。不要混用两轮地址，chain ID 同为 31337 也不能共享资产。
+
+下面步骤只面向本地 Anvil，文中的签名使用解锁测试账户，不需要私钥。数字为复现预期，历史运行结论见 [DEPLOYMENT](DEPLOYMENT.md)；本次文档重构未重新执行。
 
 ## 本地参数统一入口
 
-已有环境的参数集中在 [session.env](../output-tdd/eip712-consolidate/demo/session.env)，每项都有中文备注。钱包公开地址填入 `PRACTICE_WALLET`，待查交易哈希填入 `PRACTICE_TX_HASH`；RPC、合约地址、模拟账户、充值金额、NFT 订单参数、前后端与数据库配置也在同一个文件中维护。两个个人输入项默认留空，不填私钥或助记词。
+已有环境的参数集中在 `output-tdd/eip712-consolidate/demo/session.env`（首次运行生成，本机文件），每项都有中文备注。钱包公开地址填入 `PRACTICE_WALLET`，待查交易哈希填入 `PRACTICE_TX_HASH`；RPC、合约地址、模拟账户、充值金额、NFT 订单参数、前后端与数据库配置也在同一个文件中维护。两个个人输入项默认留空，不填私钥或助记词。
 
 每个新终端，以及每次修改配置后，都先加载下面这份文件。`PRACTICE_RUN` 保存绝对路径，不再随当前终端目录变化。首次尚无配置时，先执行第 2、3 节生成；已有环境跳过生成，直接编辑并加载。
 
 ```bash
 set -a
-source /Users/julian/Documents/Codex/2026-09-03/block-chain-list/output-tdd/eip712-consolidate/demo/session.env
+source "$(git rev-parse --show-toplevel)/output-tdd/eip712-consolidate/demo/session.env"
 set +a
 ```
 
@@ -57,7 +59,7 @@ lsof -nP -iTCP:8547 -iTCP:13016 -iTCP:3016 -sTCP:LISTEN
 ## 2. 终端 A：启动持久化本地链
 
 ```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+cd "$(git rev-parse --show-toplevel)/eip712-permit-16"
 if [ -f ../output-tdd/eip712-consolidate/demo/session.env ]; then
   set -a
   source ../output-tdd/eip712-consolidate/demo/session.env
@@ -76,7 +78,7 @@ anvil --host 127.0.0.1 --port 8547 --chain-id 31337 --silent \
 ## 3. 终端 B：部署、铸造与上架（仅首次）
 
 ```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+cd "$(git rev-parse --show-toplevel)/eip712-permit-16"
 if [ -f ../output-tdd/eip712-consolidate/demo/session.env ]; then
   set -a
   source ../output-tdd/eip712-consolidate/demo/session.env
@@ -199,7 +201,7 @@ cast call "$MARKET_ADDRESS" 'whitelistSigner()(address)' --rpc-url "$RPC_URL"
 终端 C：
 
 ```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+cd "$(git rev-parse --show-toplevel)/eip712-permit-16"
 set -a
 source ../output-tdd/eip712-consolidate/demo/session.env
 set +a
@@ -222,7 +224,7 @@ env -u DATABASE_URL -u PGOPTIONS node backend/src/main.ts
 终端 D：
 
 ```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+cd "$(git rev-parse --show-toplevel)/eip712-permit-16"
 set -a
 source ../output-tdd/eip712-consolidate/demo/session.env
 set +a
@@ -239,7 +241,7 @@ pnpm --dir frontend dev --port "$FRONTEND_PORT"
 
 ```bash
 set -a
-source /Users/julian/Documents/Codex/2026-09-03/block-chain-list/output-tdd/eip712-consolidate/demo/session.env
+source "$(git rev-parse --show-toplevel)/output-tdd/eip712-consolidate/demo/session.env"
 set +a
 cast rpc anvil_setBalance "${PRACTICE_WALLET:?请先在 session.env 填写钱包公开地址}" "$PRACTICE_ETH_BALANCE_HEX" --rpc-url "$RPC_URL"
 cast send "$TOKEN_ADDRESS" 'transfer(address,uint256)' "${PRACTICE_WALLET:?请先在 session.env 填写钱包公开地址}" "$PRACTICE_JUL_AMOUNT_WEI" \

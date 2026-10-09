@@ -15,19 +15,23 @@ export class ErrorQueue {
   private faults = new Map<string, string>()
   private muted = new Set<string>()
   private listeners = new Set<() => void>()
+  /** 向 React 返回当前不可变快照，只有 publish 才换引用并触发视图更新。 */
   snapshot = () => this.items
+  /** 登记视图监听器并返回卸载函数，组件离开时不再接收后续提示。 */
   subscribe = (listener: () => void) => {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
     }
   }
+  /** 复制队列、为新队首开始计时，再通知视图；合并次数不会延长原提示的展示时间。 */
   private publish() {
     this.items = [...this.items]
     if (this.items[0] && this.items[0].shownAt === undefined)
       this.items[0] = { ...this.items[0], shownAt: Date.now() }
     for (const listener of this.listeners) listener()
   }
+  /** 合并同类错误并保留较严重原因；最多三条，当前提示不被后来错误打断。 */
   report(cause: unknown, source: string, explicit = false) {
     const error = asAppError(cause)
     if (error.kind === "cancelled") return
@@ -67,6 +71,7 @@ export class ErrorQueue {
     ]
     this.publish()
   }
+  /** 只关闭仍在队首的那一条，并抑制尚未恢复的同类故障，避免轮询不断弹出相同提示。 */
   dismiss(id: number) {
     // 自动到期和手动关闭可能重复回调；旧 id 不得继续移除下一条提示。
     if (this.items[0]?.id !== id) return
@@ -74,11 +79,13 @@ export class ErrorQueue {
     this.items = this.items.slice(1)
     this.publish()
   }
+  /** 某个请求恢复后解除对应错误的抑制，下次真正出错仍能提醒用户。 */
   recover(source: string) {
     const key = this.faults.get(source)
     if (key) this.muted.delete(key)
     this.faults.delete(source)
   }
+  /** 清空显示项和故障抑制状态，随后通知所有已订阅的视图。 */
   clear() {
     this.items = []
     this.faults.clear()

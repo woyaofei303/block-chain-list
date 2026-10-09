@@ -3,6 +3,7 @@ import test from "node:test"
 
 import { eccRoundTrip, mine, rsaRoundTrip, sha256Hex } from "./main.mjs"
 
+/** 先核对已知哈希，再检查 PoW 可复算；两种签名都须原文通过、篡改失败。 */
 test("PoW、RSA 和 ECC", () => {
   assert.equal(
     sha256Hex("abc"),

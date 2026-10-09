@@ -3,7 +3,9 @@ pragma solidity 0.8.24;
 
 // TokenBank 只需要 ERC-20 的两个转账接口，不引入完整依赖。
 interface IERC20 {
+    /// @notice 把调用者持有的币转给 to；银行提款时调用它把币还给用户。
     function transfer(address to, uint256 amount) external returns (bool);
+    /// @notice 按 from 给调用者的额度转币；存款时调用者是银行，from 是用户。
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 

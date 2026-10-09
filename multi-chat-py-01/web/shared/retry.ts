@@ -11,10 +11,12 @@ export function fullJitterDelay(
   return Math.round(random() * Math.min(8_000, 500 * 2 ** attempt))
 }
 
+/** 只匹配明确列出的临时故障状态，404、401 等错误不靠反复请求解决。 */
 export function isRetryableStatus(status: number) {
   return RETRYABLE_STATUSES.has(status)
 }
 
+/** 等待退避时间并响应停止信号，定时器结束后移除监听，避免已停止任务继续重试。 */
 export function wait(milliseconds: number, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     // 等待必须响应取消，否则用户停止生成后仍会卡在退避计时器里。

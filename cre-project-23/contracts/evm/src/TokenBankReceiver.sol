@@ -62,6 +62,8 @@ contract TokenBankReceiver is ReceiverTemplate {
         uint256 nonce = abi.decode(report, (uint256));
         require(nonce == nextNonce, "Stale report");
 
+        // 工作流读取后到报告送达前，存款可能已变化；此刻重新检查，不能只相信旧报告。
+        // 阈值若为 100，读到 120 但执行前降到 90 时必须拒绝，而不是继续划走一半。
         uint256 deposits = bank.totalDeposits();
         require(deposits > threshold, "Threshold not met");
         // 先消费序号再进行外部调用；银行转账失败会一起回滚，允许原序号重试。

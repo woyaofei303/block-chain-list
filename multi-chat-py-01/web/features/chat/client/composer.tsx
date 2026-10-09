@@ -21,6 +21,7 @@ export function Composer({
   const disabled =
     sending || streaming || !content.trim() || content.length > 32_000
 
+  /** 发送前保存输入快照并清空输入框；请求失败则还原草稿，生成中或空白时不重复提交。 */
   async function submit() {
     if (disabled) return
     const value = content

@@ -5,6 +5,7 @@ import type { Address, Hash } from 'viem'
 import { createOperation, getOperation } from '../src/operations/repository.ts'
 import { initDatabase } from '../src/transfers/repository.ts'
 
+// 并发提交同编号并改变账户与金额，检查数据库保存的意图确实唯一且相互隔离。
 test('并发重放只产生一条操作，参数冲突拒绝、重启后保留且账户隔离', async (t) => {
   const connection = process.env.DATABASE_URL
     ? new URL(process.env.DATABASE_URL)

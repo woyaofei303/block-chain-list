@@ -13,6 +13,7 @@ type SidebarProps = {
   onDelete: (conversation: ConversationSummary) => void
 }
 
+/** 展示会话列表并通过回调交回选择、改名和删除，组件本身不直接修改历史文件。 */
 export function Sidebar(props: SidebarProps) {
   return (
     <>

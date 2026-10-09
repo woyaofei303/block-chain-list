@@ -23,6 +23,7 @@ import { whitelistTypedData } from "../scripts/whitelist.ts"
 const usePermit2 = process.env.TEST_PERMIT2 === "1"
 const authorization = usePermit2 ? "permit2" : "permit"
 
+// 在独立 Anvil 上用真实 RPC 编码签名并核对余额、NFT 归属和事件，异常路径只模拟钱包的用户行为。
 test(`真实 RPC 签名：前端 ${authorization} 存取款、拒签/切换保护、白名单 NFT 结算`, {
   timeout: 90_000,
 }, async (t) => {
@@ -62,6 +63,7 @@ test(`真实 RPC 签名：前端 ${authorization} 存取款、拒签/切换保�
   let abortAfterSign: AbortController | undefined
   // 测试钱包适配器：RPC 数据交给真实 Anvil，仅模拟用户拒签和账户切换。
   const provider = {
+    /** 真实 RPC 继续走本地 Anvil，只在签名与发送边界模拟拒签、切换或取消。 */
     async request(args: { method: string; params?: unknown }) {
       if (["eth_accounts", "eth_requestAccounts"].includes(args.method)) return [selected]
       if (args.method === "eth_chainId" && wrongChain) return "0x1"
@@ -76,6 +78,7 @@ test(`真实 RPC 签名：前端 ${authorization} 存取款、拒签/切换保�
   } as EIP1193Provider
   const session = createBank(provider, 31337, bank, buyer)
   let sequence = 0
+  /** 为每笔独立测试分配编号，按测试模式选择 Permit 或 Permit2，完成后重读实际余额。 */
   const transactBank = (
     amount: string,
     action: "permit" | "deposit" | "withdraw",

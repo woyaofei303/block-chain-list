@@ -36,6 +36,7 @@ export function getAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig {
   }
 }
 
+/** 只决定配置中的模型名；缺少密钥的检查留到实际调用时，页面仍可读取已有历史。 */
 export function getConfiguredModel(env: NodeJS.ProcessEnv = process.env) {
   return (
     env.AI_MODEL ??
@@ -44,6 +45,7 @@ export function getConfiguredModel(env: NodeJS.ProcessEnv = process.env) {
   )
 }
 
+/** 把上下文发给兼容接口并逐段产出文字；尚未输出时可重试，输出后断流则保留部分回答等待用户选择。 */
 export async function* streamChatCompletion(
   messages: ModelMessage[],
   config: AiConfig,
@@ -84,6 +86,7 @@ export async function* streamChatCompletion(
   }
 }
 
+/** 把任意网络分块拼成完整 SSE 事件再取文本；一个汉字或一条事件都可能跨越两个分块。 */
 export async function* parseOpenAiStream(stream: ReadableStream<Uint8Array>) {
   const reader = stream.getReader()
   const decoder = new TextDecoder()
@@ -121,6 +124,7 @@ class AiRequestError extends Error {
   status: number
   retryAfterMs: number
 
+  /** 只保留 HTTP 状态和建议等待时间，避免把供应商响应中的敏感细节当作页面错误。 */
   constructor(status: number, retryAfterMs: number) {
     super(`模型请求失败（${status}）`)
     this.status = status
@@ -128,6 +132,7 @@ class AiRequestError extends Error {
   }
 }
 
+/** 区分临时网络/限流错误与不可重试的业务错误，避免错误参数也被反复发送。 */
 function isRetryableError(error: unknown) {
   return (
     (error instanceof AiRequestError && isRetryableStatus(error.status)) ||
@@ -136,6 +141,7 @@ function isRetryableError(error: unknown) {
   )
 }
 
+/** 兼容秒数和 HTTP 日期两种 Retry-After；过期或无效值按零处理，再与本地退避时间比较。 */
 function retryAfter(headers: Headers) {
   const value = headers.get("retry-after")
   if (!value) return 0

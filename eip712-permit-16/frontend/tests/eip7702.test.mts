@@ -34,6 +34,7 @@ const abi = parseAbi([
   "function deposit(uint256, bytes32)",
 ])
 
+/** 构造可调的钱包能力、委托与批次状态，并记录全部 RPC，检查何时允许真正请求发送。 */
 function walletBoundary() {
   const requests: { method: string; params?: unknown }[] = []
   const receipt = {
@@ -63,6 +64,7 @@ function walletBoundary() {
     selected: account as string,
   }
   const provider = {
+    /** 按方法返回可控的测试结果；未知 RPC 直接报错，避免流程偷偷调用未被覆盖的接口。 */
     async request(request: { method: string; params?: readonly unknown[] }) {
       requests.push(request)
       const params = request.params ?? []
@@ -129,6 +131,7 @@ function walletBoundary() {
   return { requests, state, client, operation, saved, provider }
 }
 
+// 把授权和存款放进同一原子批次，检查顺序、精确额度及回执对应的委托代码。
 test("7702 存款一次 sendCalls 按序授权精确金额并存入，核实单笔回执及官方委托", async () => {
   const { client, operation, requests, saved } = walletBoundary()
   assert.equal(await client.transact("deposit", "1.000001", () => {}, operation), transactionHash)
@@ -166,6 +169,7 @@ test("7702 存款一次 sendCalls 按序授权精确金额并存入，核实单�
   assert.deepEqual(saved, ["pending", "batch-1", transactionHash])
 })
 
+// 逐项破坏能力或委托前提，检查发送次数始终为零，不自动降级成另一种交易。
 test("不支持原子批量、委托错误或官方合约缺失时，拒绝发送且不降级", async () => {
   for (const patch of [
     { capability: "unsupported" },
@@ -182,6 +186,7 @@ test("不支持原子批量、委托错误或官方合约缺失时，拒绝发�
   }
 })
 
+// 注入拒签和账户切换，分别检查不重复弹签以及签名前零发送。
 test("拒签只调用一次钱包，签名前账户变化时零发送", async () => {
   const { client, operation, state, requests } = walletBoundary()
   state.onSend = () => {
@@ -207,6 +212,7 @@ test("拒签只调用一次钱包，签名前账户变化时零发送", async ()
   )
 })
 
+// 让钱包在取消之后返回批次 ID，检查仍能保存，恢复时只核实原批次。
 test("终止后仍保存晚返回的批次 ID，恢复只查询原批次而不重发", async () => {
   const { provider, operation, state, requests, saved } = walletBoundary()
   const controller = new AbortController()
@@ -234,6 +240,7 @@ test("终止后仍保存晚返回的批次 ID，恢复只查询原批次而不�
   assert.equal(requests.filter((request) => request.method === "wallet_sendCalls").length, 1)
 })
 
+// 给出不同的异常批次结果，避免仅凭一个成功状态码就确认存款。
 test("待定、多回执、非原子、错误网络、错误委托及部分失败不能确认为一笔存款", async () => {
   for (const kind of [
     "pending",
@@ -263,6 +270,7 @@ test("待定、多回执、非原子、错误网络、错误委托及部分失�
   }
 })
 
+// 组合后端和钱包状态，确保后台入账与批次证据一致；不明结果保留原操作。
 test("恢复编排即使后端报入账也核实批次；拒签可重试，断线结果不明不得重发", async (t) => {
   const boundary = walletBoundary()
   let intent: Intent = {
@@ -338,6 +346,7 @@ test("恢复编排即使后端报入账也核实批次；拒签可重试，断�
   )
 })
 
+// 用本地存储检查不透明批次 ID 与模式都能恢复，损坏值不能当成普通存款重发。
 test("批量模式及不透明批次 ID 持久化，损坏记录不得恢复为普通存款", () => {
   let raw = ""
   const storage = {

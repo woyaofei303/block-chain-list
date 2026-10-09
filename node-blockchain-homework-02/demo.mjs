@@ -5,8 +5,10 @@ import { pathToFileURL } from "node:url"
 
 const TIMEOUT_MS = 3_000
 
+/** 给节点留出处理网络消息的时间，轮询时不持续占用 CPU。 */
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
+/** 为等待设置上限，结束后清除计时器；它只结束等待，不会自动取消底层任务。 */
 async function withTimeout(promise, description) {
   let timer
   try {
@@ -21,6 +23,7 @@ async function withTimeout(promise, description) {
   }
 }
 
+/** 让系统分配临时端口再释放，供子进程启动使用；释放后仍可能被别的程序抢占。 */
 async function unusedPort() {
   const server = createServer()
   await withTimeout(once(server.listen(0, "127.0.0.1"), "listening"), "分配临时端口")
@@ -29,6 +32,7 @@ async function unusedPort() {
   return port
 }
 
+/** 带超时请求演示节点，只接受成功状态；网络或 HTTP 失败都附上当前请求便于排查。 */
 export async function requestJson(url, { timeoutMs = TIMEOUT_MS, ...options } = {}) {
   let response
   try {
@@ -40,6 +44,7 @@ export async function requestJson(url, { timeoutMs = TIMEOUT_MS, ...options } = 
   return response.json()
 }
 
+/** 反复检查同步条件直到成功或总期限用完，每次请求只使用剩余的时间预算。 */
 export async function poll(predicate, description, timeoutMs = TIMEOUT_MS) {
   const deadline = Date.now() + timeoutMs
   let lastError
@@ -54,6 +59,7 @@ export async function poll(predicate, description, timeoutMs = TIMEOUT_MS) {
   throw new Error(`${description} 超时（${timeoutMs} ms）${lastError ? `: ${lastError.message}` : ""}`)
 }
 
+/** 把子进程分块输出拼成完整行，再打印或检查 READY，避免把半行当成完整消息。 */
 function forwardLines(stream, name, onLine) {
   let buffered = ""
   stream.setEncoding("utf8")
@@ -69,6 +75,7 @@ function forwardLines(stream, name, onLine) {
   })
 }
 
+/** 创建独立节点进程并等待 READY；演示用难度 2 缩短等待，不复用用户已有节点。 */
 function startNode({ name, port, peer }) {
   const args = ["src/node.mjs", "--name", name, "--port", String(port), "--difficulty", "2"]
   if (peer) args.push("--peer", peer)
@@ -78,6 +85,7 @@ function startNode({ name, port, peer }) {
   })
   const ready = new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${name} READY 超时（${TIMEOUT_MS} ms）`)), TIMEOUT_MS)
+    /** 结束 READY 等待前清除超时任务，避免启动完成后又留下过期错误。 */
     const settle = (callback, value) => {
       clearTimeout(timer)
       callback(value)
@@ -94,6 +102,7 @@ function startNode({ name, port, peer }) {
   return { child, ready }
 }
 
+/** 先请求自己启动的子进程退出，超时才强制结束；不会按端口去杀未知进程。 */
 async function stopChild(child) {
   if (child.exitCode !== null || child.signalCode !== null) return
   child.kill("SIGTERM")
@@ -106,17 +115,18 @@ async function stopChild(child) {
   }
 }
 
+/** 先让 A 打包，再让晚加入的 B 同步，最后验证实时交易与区块广播；结束时清理两节点。 */
 async function runDemo() {
   let nodeA
   let nodeB
   try {
-    // 全流程 1-2：进入演示，准备端口并启动 node-a；READY 表示 HTTP/P2P 已可用。
+    // 准备端口并启动 node-a；READY 表示 HTTP/P2P 已可用。
     const [portA, portB] = await Promise.all([unusedPort(), unusedPort()])
     nodeA = startNode({ name: "node-a", port: portA })
     await nodeA.ready
     const httpA = `http://127.0.0.1:${portA}`
 
-    // 全流程 3-4：交易先进入 node-a 的 mempool，再由 /mine 执行 PoW 并打包进区块。
+    // 随后，交易先进入 node-a 的 mempool，再由 /mine 执行 PoW 并打包进区块。
     await requestJson(`${httpA}/transactions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -126,7 +136,7 @@ async function runDemo() {
     console.log(`交易1已打包: block=${firstMine.block.index}, tx=${firstMine.block.transactions.length}`)
     console.log(`挖矿耗时: block=1, ${firstMine.miningMs.toFixed(3)} ms`)
 
-    // 全流程 5：node-b 晚加入，通过 HELLO → GET_CHAIN → CHAIN 补齐 node-a 已有区块。
+    // 接着，node-b 晚加入，通过 HELLO → GET_CHAIN → CHAIN 补齐 node-a 已有区块。
     nodeB = startNode({ name: "node-b", port: portB, peer: `ws://127.0.0.1:${portA}/p2p` })
     await nodeB.ready
     const httpB = `http://127.0.0.1:${portB}`
@@ -140,7 +150,7 @@ async function runDemo() {
     const synced = await Promise.all([requestJson(`${httpA}/status`), requestJson(`${httpB}/status`)])
     console.log(`落后节点同步成功: node-a高度=${synced[0].height}, node-b高度=${synced[1].height}`)
 
-    // 全流程 6：同步完成后再提交交易，验证 TRANSACTION 能实时广播到 node-b。
+    // 同步完成后再提交交易，验证 TRANSACTION 能实时广播到 node-b。
     const second = await requestJson(`${httpA}/transactions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -152,7 +162,7 @@ async function runDemo() {
     )
     console.log(`交易广播成功: node-b待处理交易=${(await requestJson(`${httpB}/mempool`)).transactions.length}`)
 
-    // 全流程 6：node-a 再次挖矿，node-b 校验 BLOCK 后追加，最终两个 tipHash 相同。
+    // node-a 再次挖矿，node-b 校验 BLOCK 后追加，最终两个 tipHash 相同。
     const secondMine = await requestJson(`${httpA}/mine`, { method: "POST" })
     console.log(`挖矿耗时: block=2, ${secondMine.miningMs.toFixed(3)} ms`)
     await poll(async (timeoutMs) => {
@@ -166,7 +176,7 @@ async function runDemo() {
     console.log(`新区块广播成功: node-a高度=${statusA.height}, node-b高度=${statusB.height}`)
     console.log(`两个节点链头一致: ${statusA.tipHash === statusB.tipHash}`)
   } finally {
-    // 全流程 7：成功或失败都终止子进程；子进程再关闭 WebSocket、HTTP 和所有 socket。
+    // 最后，成功或失败都终止子进程；子进程再关闭 WebSocket、HTTP 和所有 socket。
     await Promise.all([nodeA && stopChild(nodeA.child), nodeB && stopChild(nodeB.child)])
   }
 }

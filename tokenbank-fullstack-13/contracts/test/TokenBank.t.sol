@@ -5,6 +5,7 @@ import {BaseERC20} from "../src/BaseERC20.sol";
 import {TokenBank} from "../src/TokenBank.sol";
 
 contract TokenBankTest {
+    /// @notice 把实际 Token 余额和银行个人账本分别核对；直接转币只增加银行资产，不增加个人可提额。
     function testDepositWithdrawalAndDirectTransfer() public {
         BaseERC20 token = new BaseERC20();
         TokenBank bank = new TokenBank(address(token));
@@ -26,6 +27,7 @@ contract TokenBankTest {
         require(token.balanceOf(address(bank)) == 1 ether, "direct transfer assets");
     }
 
+    /// @notice 未授权的存款应失败，钱包、银行资产和个人账本都保持原状。
     function testUnapprovedDepositRollsBack() public {
         BaseERC20 token = new BaseERC20();
         TokenBank bank = new TokenBank(address(token));

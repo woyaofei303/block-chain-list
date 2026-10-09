@@ -1,3 +1,4 @@
+/** 创建明细和进度表，重复运行不清空已有数据；转账以日志位置去重，金额按整数保存。 */
 export async function initDatabase(db) {
   // scan_progress 保存“下一块从哪里开始”；block_hash 对应 next_block - 1。
   // transfers 保存事件明细。一个交易可有多条 Transfer，主键必须包含 log_index。
@@ -31,6 +32,7 @@ export async function initDatabase(db) {
   `)
 }
 
+/** 在同一 SQL 快照中读取分页明细和已扫描高度，自转账只出现一次；没有记录不代表链上从未转账。 */
 export async function findTransfers(
   db,
   { chainId, tokenAddress },

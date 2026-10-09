@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description: "连接钱包，查看 Token 余额，管理 TokenBank 存款与转账记录。",
 }
 
+/** 给所有页面提供中文文档骨架和全局 Provider；业务交互从内部客户端组件开始。 */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // Bybit 等钱包会在 React 接管前注入 html 属性；仅容忍根元素差异，子组件仍执行 hydration 校验。
   return (

@@ -3,8 +3,10 @@ import { test } from "node:test"
 import { ErrorQueue } from "../shared/error-queue.ts"
 import { AppError } from "../shared/errors.ts"
 
+// 连续上报相同与不同等级的错误，检查合并计数和容量，避免用户被轮询错误刷屏。
 test("错误合并计数、容量含当前最多 3 条、优先保留严重错误及关闭后故障抑制", () => {
   const q = new ErrorQueue()
+  /** 构造指定等级的业务错误，控制队列优先级，不依赖随机网络失败。 */
   const error = (code: string, severity: 0 | 1 | 2 = 0) =>
     new AppError("business", code, code, { severity })
   q.report(error("network"), "a")
@@ -34,6 +36,7 @@ test("错误合并计数、容量含当前最多 3 条、优先保留严重错�
   assert.deepEqual(q.snapshot(), [])
 })
 
+// 关闭、恢复再报错，检查同级顺序及时间没有因合并被重置。
 test("同等级先进先出，合并不重置计时，恢复和主动新操作允许重新提示", () => {
   const q = new ErrorQueue()
   const fault = new AppError("network", "OFFLINE", " 网络  失败 ", { requestId: "first" })

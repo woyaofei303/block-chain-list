@@ -11,9 +11,11 @@ import type { ScanConfig, TransferResponse } from '../src/transfers/types.ts'
 const token: Address = `0x${'a'.repeat(40)}`
 const alice: Address = `0x${'1'.repeat(40)}`
 const bob: Address = `0x${'2'.repeat(40)}`
+/** 生成固定长度的可复现测试哈希，便于指定重组前后的区块而不依赖公共 RPC。 */
 const hash = (n: number | bigint): Hash =>
   `0x${BigInt(n).toString(16).padStart(64, '0')}`
 
+// 用测试链数据和独立数据库范围检查重扫、去重与查询，最后释放测试资源。
 test('扫块落库后，可通过 HTTP 查询收支、准确金额，并在重启后续扫', async (t) => {
   // 只创建、删除本次测试独有的 schema，不改动已保存的作业数据。
   const schema = `erc20_test_${process.pid}_${Date.now()}`

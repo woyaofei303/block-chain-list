@@ -1,144 +1,60 @@
-# TokenBank：ERC20 与代币存取练习
+# 07 · TokenBank：授权、存入、取出一笔代币
 
-本项目位于现有仓库的 `tokenbank-07/`，沿用其他合约练习的 Remix 开发方式。
+ETH 可以随交易直接发送；ERC20 代币的余额却记录在代币合约里。这个项目让你发行一份代币，再把 10 枚存入银行、取出 4 枚，理解两个合约怎样合作。
 
-当前状态：ERC20、TokenBank 及 Remix 测试已实现；在原有存取款流程上增加了受权限保护的 `withdrawhalf`，并由 [cre-project-23](../cre-project-23/README.md) 提供 Chainlink CRE Receiver。修改后的 Remix 测试尚未在浏览器中重跑；CRE 侧已通过 Forge、SDK + Anvil 划款集成测试及 CLI 跳过分支模拟，详见 [本次日志](../cre-project-23/RUN_LOG.md)。未部署到公共网络，也未提交答题表单。
+先了解 [05 的 ETH 银行](../bank-05/README.md)。这里的 `balances` 是当前可提余额，与 05 的历史累计存款不同。
 
-完整操作步骤见 [Remix 完整操作流程](REMIX_GUIDE.md)，包含环境准备、部署、授权、存取款、多用户验证、异常检查和作业提交。
+## 用“100 → 90 → 94”看清三本账
 
-## 1. 编写 ERC20 token 合约
+假设 Alice 钱包有 100 枚代币。给银行授权 10 枚后，钱包仍是 100：`approve` 只是许可，不是付款。
 
-- [题目主页](https://learnblockchain.cn/quest/aa45f136-27a3-4bc9-b4f7-15308e1e0daa)
-- [完整题目及代码模板](https://learnblockchain.cn/quest/aa45f136-27a3-4bc9-b4f7-15308e1e0daa/challenging)
+存入 10 枚后，钱包剩 90，银行持有 10，银行记录 Alice 可提 10。取出 4 枚后，钱包是 94，银行持有 6，Alice 可提 6。再次取 7 枚会失败，三个数字都不应改变。
 
-网页要求补全 `BaseERC20` 模板，固定信息如下：
+代币 `decimals = 18`，即一枚对应 `10^18` 个最小单位。函数参数用最小单位；Remix 的 **Value 始终保持 0 Wei**，因为这里转的是代币而非 ETH。
 
-```text
-合约名称：BaseERC20
-name：BaseERC20
-symbol：BERC20
-decimals：18
-题面总量：100,000,000
-初始接收者：部署者（模板将 totalSupply 赋给 balances[msg.sender]）
-```
+## 第一次操作：在 Remix VM 完成闭环
 
-需要实现五个接口：
+导入 `contracts/`、`tests/`。编译器选 `0.8.24`，目标 `shanghai`，关闭优化；选择 Remix VM，不需真实钱包。
 
-- `balanceOf(owner)`：查询账户余额。
-- `transfer(to, value)`：调用者向接收者转账。
-- `approve(spender, value)`：设置 spender 可使用的额度。
-- `allowance(owner, spender)`：查询授权额度。
-- `transferFrom(from, to, value)`：调用者使用 from 授予自己的额度转账。
+1. 用 A 部署 `BaseERC20`，记地址 T。它发行一亿枚 BERC20，全部给 A，没有后续增发入口；所以上面的 100 枚只是便于计算的例子。
+2. 部署 `TokenBank`，构造参数填 T，记银行地址 B。不要部署文件内的 `IERC20` 接口。
+3. 在 **Token** 上调用 `approve(B, 10000000000000000000)`，授权 10 枚。
+4. 在 **Bank** 上调用 `deposit(10000000000000000000)`。
+5. 查询 `Bank.balances(A)` 和 `Token.balanceOf(B)`，新实例中都应为 10 枚的最小单位数。
+6. 在 Bank 调 `withdraw(4000000000000000000)`，个人可提余额应剩 `6000000000000000000`。
+7. 再取 7 枚应失败；取剩余 6 枚应成功，账本归零。
 
-模板已声明 `Transfer`、`Approval` 事件，并在转账、授权函数末尾发出相应事件及返回 `true`。题目要求在指定位置补全代码，保留既有模板结构。
+更多双账户操作和每一步结果见 [Remix 操作指南](REMIX_GUIDE.md)。
 
-题目明确要求使用 `require`，以下报错文本需保持一致：
+## 钱和账怎样一起变化
 
 ```text
-transfer / transferFrom 余额不足：
-ERC20: transfer amount exceeds balance
-
-transferFrom 授权不足：
-ERC20: transfer amount exceeds allowance
+A → Token.approve(B, amount)：Token 记录 A 给 B 的额度
+A → Bank.deposit(amount)
+    Bank → Token.transferFrom(A, Bank, amount)
+    Bank 增加 balances[A] 和 totalDeposits
+A → Bank.withdraw(amount)
+    Bank 先扣余额，再由 Token.transfer 把币转回 A
 ```
 
-**总量单位的解释：** 题面写了总量与精度，但没有明确写出缩放公式。若按“发行一亿枚可展示的代币”理解，依据 [ERC20 的 decimals 定义](https://eips.ethereum.org/EIPS/eip-20#decimals)，链上最小单位总量应为 `100_000_000 * 10 ** 18`，即 `100000000000000000000000000`。这是实现时的单位解释，不应误称为题面给出的公式。
+银行调用 Token 时，Token 看到的调用者是银行，所以授权对象必须是银行地址。提款花的是银行自己的代币，不需要用户再次授权。
 
-## 2. Solidity 编写 TokenBank
+如果转账失败，整笔交易回滚，扣账也会撤销。直接 `Token.transfer(B, amount)` 只增加银行持币量，不会执行 `deposit`，因此不会增加个人可提余额。
 
-- [题目主页](https://learnblockchain.cn/quest/eeb9f7d8-6fd0-4c38-b09c-75a29bd53af3)
-- [完整题目](https://learnblockchain.cn/quest/eeb9f7d8-6fd0-4c38-b09c-75a29bd53af3/challenging)
+## 进阶：自动划转会减少个人可提余额
 
-网页要求：
+当前版本还供 [23 的 CRE 自动化](../cre-project-23/README.md) 使用。owner 可以设置 Receiver 合约；owner 或该 Receiver 可调用 `withdrawhalf(recipient)`，划转已记账存款的一半，并分摊扣减个人余额。
 
-1. 将自己编写的 Token 存入 TokenBank，并能取出。
-2. `deposit()` 记录各地址存入的数量。
-3. `withdraw()` 允许用户取回自己此前存入的 Token。
-4. 答题框接受合约代码或 GitHub 链接。
+例如 Alice 可提 10、Bob 可提 6，总计 16；划出 8 后，两人分别剩 5、3。最小单位出现奇数时，通过进位分摊保证总扣款恰为 `floor(totalDeposits / 2)`，单个用户与半额的差不超过一个最小单位。
 
-网页只列出方法名称，没有规定参数、构造函数、余额映射名称或具体报错文本。本项目采用 `deposit(uint256 amount)`、`withdraw(uint256 amount)`，部署时传入 Token 地址；这些是实现选择，并非题目指定的完整 ABI。
+直接转入但未记账的代币不参与这次半额计算。最多允许 100 个历史存款人，提现后也不会释放历史名额；这是限制遍历成本的教学实现。
 
-## 3. 两题如何衔接
+## 对照代码与测试
 
-第一题提供代币，第二题使用该代币完成合约间调用。实际交互顺序如下，`amount` 均为代币最小单位：
+- [BaseERC20.sol](contracts/BaseERC20.sol)：从 `approve`、`transferFrom` 理解授权由谁消费。
+- [TokenBank.sol](contracts/TokenBank.sol)：从 `deposit`、`withdraw` 看资产与账本，再读 `withdrawhalf`。
+- [TokenBank_test.sol](tests/TokenBank_test.sol)：在 Remix 的 Solidity Unit Testing 插件运行，检查个人隔离、失败回滚和自动划转。
 
-```text
-用户 → Token.approve(TokenBank 地址, amount)
-用户 → TokenBank.deposit(amount)
-       TokenBank → Token.transferFrom(用户, TokenBank 地址, amount)
-       TokenBank 记录该用户可取出的余额
+银行适配本项目无转账手续费、无 rebase 的代币，不能据此假定兼容所有 ERC20。2026-10-09 已本地编译 `contracts/`；未重新运行 Remix 测试或部署公共链。
 
-用户 → TokenBank.withdraw(amount)
-       TokenBank 扣减该用户余额
-       TokenBank → Token.transfer(用户, amount)
-```
-
-`approve` 只授予额度，不转移代币；存款时调用 Token 的是 TokenBank，因此授权对象应为 TokenBank。提款由 TokenBank 转出其持有的代币，不需要用户再次授权。相关接口语义见 [ERC20 标准](https://eips.ethereum.org/EIPS/eip-20)。
-
-银行中的余额表示“累计存入减去个人提款及自动划转分摊”的当前可提余额。用户直接调用 Token 的 `transfer` 向银行地址转账，不会自动执行银行的 `deposit` 记账。
-
-实现会检查代币转账结果，失败时回滚记账。提款先检查个人余额、扣账，再调用代币转账。[ERC20 标准明确要求处理返回的 false](https://eips.ethereum.org/EIPS/eip-20#methods)。
-
-## 4. 项目结构与实现规则
-
-```text
-tokenbank-07/
-├── contracts/
-│   ├── BaseERC20.sol
-│   └── TokenBank.sol
-├── tests/
-│   ├── TokenBankHelpers.sol
-│   └── TokenBank_test.sol
-├── REMIX_GUIDE.md
-└── README.md
-```
-
-- [BaseERC20.sol](contracts/BaseERC20.sol)：发行一亿枚、18 位精度的 BERC20，全部分配给部署者；无后续增发入口。遵循题目接口与报错要求，本地版本将公共转账逻辑集中在 `_transfer`。
-- [TokenBank.sol](contracts/TokenBank.sol)：文件内包含所需的 `IERC20` 接口，可将整个文件直接复制到答题框。代币地址部署时固定，`balances(address)` 返回用户当前可提余额；owner 可配置 CRE Receiver，按比例划转已记账存款的一半。
-- [TokenBank_test.sol](tests/TokenBank_test.sol)：六组 Remix 测试。每组重新部署 Token 和 Bank，避免状态相互影响。
-- [TokenBankHelpers.sol](tests/TokenBankHelpers.sol)：模拟第二位存款人，以及返回 `false` 的代币调用。
-
-银行拒绝零金额、超出个人存款余额的提款，以及零地址或没有合约代码的 Token 地址。存款和提款分别发出 `Deposited`、`Withdrawn` 事件。
-
-该银行按本项目 BaseERC20 的行为记账：转账没有手续费、不自动改变持有人余额（rebase），并返回布尔值。其他特殊代币需要另行适配。直接向银行地址转 Token 不会记入个人存款，因此操作时使用 `approve` + `deposit`。
-
-## 5. 只在 Remix 编译与验证
-
-1. 打开 [Remix](https://remix.ethereum.org/)，本次入口跳转至 [app.remix.live](https://app.remix.live/)。创建空工作区 `tokenbank`。
-2. 用文件面板的 **Create → Upload folders** 导入本项目的 `contracts`、`tests` 两个文件夹，保留目录结构。
-3. Solidity Compiler 选择 `0.8.24+commit.e11b9ed9`；Advanced Configurations 中 EVM Version 选 `shanghai`，Optimization 关闭。
-4. 打开 `contracts/TokenBank.sol` 并编译。部署时选 `TokenBank`，不要选择接口 `IERC20`。
-5. 在 Plugins 中启用 **Solidity unit testing**，测试目录选择 `tests`，勾选 `tests/TokenBank_test.sol`，点击 **Run**。
-6. `remix_tests.sol` 由插件提供，不需要安装本地依赖。测试在 Remix 的模拟环境中创建和调用合约，不需要连接钱包。
-
-**历史运行结果（2026-09-10）：** 修改自动化入口之前，Remix `2.5.7`，工作区 `tokenbank`，Solidity `0.8.24`，EVM `shanghai`，Optimization 关闭；编译成功，**Passed: 5，Failed: 0，Time Taken: 0.48 s**。本次修改后的 Remix 浏览器测试未重跑，不能沿用这条历史结果宣称 6 组通过。
-
-当前测试用例（前五组有上述历史通过记录，第六组为本次新增）：
-
-1. `initialStateAndTokenRules`：名称、符号、精度、总量、初始余额、自转账、零转账、覆盖授权、消耗授权及转账失败回滚。
-2. `depositAndWithdraw`：授权后存款、追加存款、部分提款、全部提款，以及 Token 实际余额。
-3. `authorizationAndUserIsolation`：未授权存款、Token 余额不足、超额提款、禁止提取他人余额，以及失败时状态不变。
-4. `invalidInputsAndDirectTransfer`：零金额、空余额提款、无效 Token 地址，以及直接转账不自动记账。
-5. `failedTransfersRollBackAndCanRetry`：转账返回 `false` 时存款不入账、提款扣账回滚，恢复后可重新提款。
-6. `automatedHalfWithdrawalPreservesClaims`：只有 owner 配置的 Receiver 能触发半额划转；多用户账本按比例减少，银行实际持仓与 `totalDeposits` 一致。
-
-## 6. Remix VM 手动复现与提交
-
-下方是操作摘要；逐步参数、内部调用和预期结果请阅读 [独立流程说明](REMIX_GUIDE.md)。
-
-以下是可复现的操作步骤；上述实际验证记录来自自动化测试，不代表已经单独完成本节手动操作。
-
-1. 编译 `BaseERC20.sol`，在 Deploy & Run 选择 **Remix VM**，部署 `BaseERC20`，复制 Token 地址。
-2. 编译 `TokenBank.sol`，选择 `TokenBank`，构造参数填写 Token 地址，再部署银行。
-3. 在 Token 上调用 `approve(银行地址, 10000000000000000000)`，授权银行使用 10 枚 Token。
-4. 在银行上调用 `deposit(10000000000000000000)`；查询 `balances(当前账户)`，应为 `10000000000000000000`。
-5. 调用 `withdraw(4000000000000000000)` 提取 4 枚，剩余可提余额应为 `6000000000000000000`。
-6. 调用 `withdraw(6000000000000000000)` 提取剩余 6 枚，可提余额归零。所有操作的 **Value 保持 0 Wei**，Token 数量填写在函数参数中。
-
-答题时可复制 `contracts/TokenBank.sol` 的完整内容，或填写本项目的 [GitHub 链接](https://github.com/woyaofei303/block-chain-list/tree/main/tokenbank-07)。
-
-自动化 Receiver、CRE Cron 工作流、Foundry 测试和部署脚本见 [cre-project-23](../cre-project-23/README.md)。
-
-图片额外提到部署 ERC20，但未指定网络。当前完成范围为合约实现与 Remix 模拟验证，公共网络部署尚未执行。
-
-解析日期：2026-09-10。两个链接及各自的完整题目均已通过浏览器读取；本次未提交答案或调用 AI 判题。
+**历史运行结果（2026-09-10）：** 修改自动化入口之前，Remix `2.5.7`，工作区 `tokenbank`，Solidity `0.8.24`，EVM `shanghai`，Optimization 关闭；编译成功，**Passed: 5，Failed: 0，Time Taken: 0.48 s**。自动化入口修改后的 Remix 浏览器测试未重跑，不能沿用这条历史结果宣称 6 组通过。

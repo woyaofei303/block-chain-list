@@ -7,8 +7,8 @@ import {Counter} from "../src/Counter.sol";
 contract CounterScript is Script {
     Counter public counter;
 
-    function setUp() public {}
-
+    /// @notice 部署一个初始为 0 的计数器；不加 --broadcast 时只在模拟环境运行。
+    /// @dev startBroadcast 标记需要发送的操作，实际发送者由 Forge 命令选择。
     function run() public {
         vm.startBroadcast();
 

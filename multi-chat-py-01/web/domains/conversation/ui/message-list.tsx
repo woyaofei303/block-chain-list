@@ -20,6 +20,7 @@ type MessageListProps = {
   onRetry: (messageId: string) => void
 }
 
+/** 按历史顺序展示消息；用户停在底部才跟随新文本，上翻阅读时不抢滚动位置。 */
 export function MessageList({
   conversation,
   loading,
@@ -68,6 +69,7 @@ export function MessageList({
   )
 }
 
+/** 按用户/助手角色展示文本与生成状态，复制只取正文，重试把消息编号交回聊天用例。 */
 function Message({
   message,
   retryDisabled,
@@ -166,6 +168,7 @@ function Message({
   )
 }
 
+/** 保留代码格式并提供纯文本复制；复制提示稍后恢复，不改模型输出内容。 */
 function CodeBlock({ children }: { children?: ReactNode }) {
   const [copied, setCopied] = useState(false)
   const code = nodeText(children).replace(/\n$/, "")
@@ -186,6 +189,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   )
 }
 
+/** 递归取 React 子节点中的文字，用于复制代码；元素样式和非文本节点不进入剪贴板。 */
 function nodeText(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node)
   if (Array.isArray(node)) return node.map(nodeText).join("")

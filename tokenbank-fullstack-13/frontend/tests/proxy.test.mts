@@ -4,6 +4,7 @@ import { createServer } from "node:http"
 import { test } from "node:test"
 import { GET } from "../app/api/transfers/route.ts"
 
+// 拦截上游请求来核对地址与状态转发，不需要启动真实后端或访问公共链。
 test("同源代理保留查询参数及错误状态，拒绝无效服务地址", async (t) => {
   const previous = process.env.INDEXER_URL
   t.after(() => {

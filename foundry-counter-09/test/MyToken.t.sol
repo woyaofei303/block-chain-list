@@ -6,6 +6,7 @@ import {IERC20Errors} from "openzeppelin-contracts/contracts/interfaces/IERC6093
 import {MyToken} from "../src/MyToken.sol";
 
 contract MyTokenTest is Test {
+    /// @notice 核对名称、精度和初始供应量，并确认全部代币归创建合约的测试账户。
     function test_InitialSupplyBelongsToDeployer() public {
         MyToken token = new MyToken("My Token", "MTK");
 
@@ -16,6 +17,7 @@ contract MyTokenTest is Test {
         assertEq(token.balanceOf(address(this)), token.totalSupply());
     }
 
+    /// @notice 随机转给 Alice，再让 Bob 按额度转走；余额守恒，额度扣完，总量不变。
     function testFuzz_TransferAndTransferFromPreserveSupply(uint256 amount) public {
         MyToken token = new MyToken("My Token", "MTK");
         uint256 supply = token.totalSupply();
@@ -40,6 +42,7 @@ contract MyTokenTest is Test {
         assertEq(token.totalSupply(), supply);
     }
 
+    /// @notice 零地址、余额不足、额度不足都须失败，且不能留下任何余额变化。
     function test_InvalidTransfersRevertWithoutChangingBalances() public {
         MyToken token = new MyToken("My Token", "MTK");
         uint256 supply = token.totalSupply();

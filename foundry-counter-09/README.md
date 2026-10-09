@@ -1,100 +1,80 @@
-# foundry-counter
+# 09 · 用 Foundry 测试、部署和读取合约
 
-Foundry 合约练习项目，包含：
+本项目把第 04 课的简单计数器扩展成完整工具练习，并增加基于 OpenZeppelin 的 ERC20。你会区分“编译成功、测试通过、部署模拟、实际链上部署”四件事。
 
-- `src/Counter.sol`：设置、递增计数，并发出 `NumberChanged22` 事件。
-- `src/MyToken.sol`：OpenZeppelin ERC20 代币，构造参数为名称和符号。
-  精度为 18，固定发行 100 亿枚（`10_000_000_000 * 1e18` 个最小单位），部署时全部发给部署者。
+## 先理解要观察的结果
 
-以下命令在 `foundry-counter-09` 目录中执行。依赖使用现有的
-`lib/forge-std` 和 `lib/openzeppelin-contracts`，导入路径由 `remappings.txt` 配置。
-两个依赖均作为源码随仓库保存，克隆后无需初始化子模块。
-其中 forge-std 为 `v1.16.2`，源码版本为 `bf647bd6046f2f7da30d0c2bf435e5c76a780c1b`。
+Counter 的 `number` 初始为 0。调用 `setNumber(7)` 后变 7，再 `increment()` 后变 8。两次写入都会发出 `NumberChanged22` 事件，包含旧值和新值。
 
-## Foundry
+MyToken 在部署时接收名称和符号，发行 100 亿枚给部署者。`decimals = 18`，所以链上总量为 `10_000_000_000 × 10^18`。它复用 OpenZeppelin ERC20，不必在这里重写授权和转账。
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+## 准备工具并运行测试
 
-Foundry consists of:
+Foundry 中，Forge 负责编译、测试与执行部署脚本；Anvil 是本机测试链；Cast 用于向节点读数据或发交易。先装好这三个命令，再从仓库根目录执行：
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
+```bash
+cd foundry-counter-09
+forge fmt --check
 forge build --sizes
-```
-
-### Test
-
-```shell
 forge test -vv
 ```
 
-测试包含 Counter 的设置和递增、MyToken 初始发行量、转账与授权转账的模糊测试，
-以及零地址、余额不足和未授权转账的失败路径。
+测试覆盖计数、发行量、转账、授权及失败路径。带随机输入的测试叫模糊测试，用多组值检查同一规则；通过不等于所有可能输入都已穷尽。
 
-### Format
+`lib/forge-std`、`lib/openzeppelin-contracts` 已随仓库保存，不用初始化子模块。其他项目也会复用这里的库，学习时保持目录结构。
 
-```shell
-forge fmt
-forge fmt --check
-```
+## 先模拟脚本：不连接节点、不广播
 
-### Gas Snapshots
+仍在本项目目录执行：
 
-```shell
-forge snapshot
-```
-
-### Anvil
-
-```shell
-anvil
-```
-
-### 本地部署模拟
-
-无需 RPC 或私钥；以下命令只在本地 EVM 模拟，不发送链上交易。
-
-```shell
+```bash
 forge script script/Counter.s.sol:CounterScript
-forge script script/MyToken.s.sol:MyTokenScript --sig "run(string,string)" "My Token" "MTK"
+forge script script/MyToken.s.sol:MyTokenScript --sig 'run(string,string)' 'My Token' 'MTK'
 ```
 
-### Sepolia 部署
+第一条创建 Counter；第二条把名称、符号传给 `run`。它们只在临时 EVM 中执行；输出了地址，不代表这个地址已存在于某条持续运行的链上。
 
-使用已导入 Foundry keystore 的 `deployer` 账户，将 `<DEPLOYER_ADDRESS>` 替换为该账户地址。
-`sepolia` RPC 已在 `foundry.toml` 配置；`--broadcast` 会实际发送交易，初始代币归该部署账户。
+## 再部署到独立本地链
 
-```shell
-forge script script/MyToken.s.sol:MyTokenScript \
-  --sig "run(string,string)" "My Token" "MTK" \
-  --rpc-url sepolia \
-  --account deployer \
-  --sender <DEPLOYER_ADDRESS> \
-  --broadcast
+终端一从仓库根目录进入本项目，确认 18545 未被占用后启动。`--silent` 避免在终端打印测试账户秘密：
+
+```bash
+cd foundry-counter-09
+anvil --host 127.0.0.1 --port 18545 --silent
 ```
 
-### Cast
+终端二也进入本项目。下面账户是 Anvil 默认的公开测试地址，仅用于这个本地实例：
 
-```shell
-cast --help
+```bash
+cd foundry-counter-09
+export LOCAL_RPC=http://127.0.0.1:18545
+export LOCAL_SENDER=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+cast chain-id --rpc-url "$LOCAL_RPC"
+forge script script/Counter.s.sol:CounterScript \
+  --rpc-url "$LOCAL_RPC" --sender "$LOCAL_SENDER" --unlocked --broadcast
 ```
 
-### Help
+chain ID 应为 31337。这里 `--broadcast` 写入本地链，`--unlocked` 使用节点自身的测试账户，不需要复制私钥。
 
-```shell
-forge --help
-anvil --help
-cast --help
+从脚本输出的 Counter 地址，或 `broadcast/Counter.s.sol/31337/run-latest.json` 的部署记录取得地址，再替换下方占位值：
+
+```bash
+export COUNTER_ADDRESS='<本次本地部署地址>'
+cast call "$COUNTER_ADDRESS" 'number()(uint256)' --rpc-url "$LOCAL_RPC"
+cast send "$COUNTER_ADDRESS" 'setNumber(uint256)' 7 \
+  --rpc-url "$LOCAL_RPC" --from "$LOCAL_SENDER" --unlocked
+cast send "$COUNTER_ADDRESS" 'increment()' \
+  --rpc-url "$LOCAL_RPC" --from "$LOCAL_SENDER" --unlocked
+cast call "$COUNTER_ADDRESS" 'number()(uint256)' --rpc-url "$LOCAL_RPC"
 ```
+
+预期先读到 0，最后读到 8。检查交易回执成功再查询，不能把发出请求当成执行成功。停止自己启动的 Anvil 后，本次内存状态不再可用。
+
+## 对照源码阅读
+
+1. [Counter.sol](src/Counter.sol)：状态写入与事件的关系；事件不是第二份可修改的计数器。
+2. [Counter.t.sol](test/Counter.t.sol)：`setUp` 怎样为测试准备独立实例。
+3. [Counter.s.sol](script/Counter.s.sol)：`startBroadcast` 怎样标记要发送的操作。
+4. [MyToken.sol](src/MyToken.sol) 和 [MyToken.t.sol](test/MyToken.t.sol)：继承 ERC20 后只保留发行规则。
+
+2026-10-09 已通过 5 项 Forge 测试，并在独立产物目录模拟运行 Counter 部署脚本；删除空 `setUp` 后仍部署成功，没有广播到公共链。公共链部署还需独立配置网络、加密账户与费用；本课的本地地址不能拿去当 Sepolia 地址使用。

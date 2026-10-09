@@ -21,12 +21,15 @@ export function createGenerationBuffer(id: string) {
 
   return {
     id,
+    /** 告诉订阅端是否已有终态；结束后回放完历史就能关闭连接。 */
     get terminal() {
       return terminal
     },
+    /** 给即将保存的终态预留连续编号，保证磁盘进度与随后发布的事件一致。 */
     get nextEventId() {
       return events.length + 1
     },
+    /** 按 1、2、3 分配事件编号并通知订阅者；done、error 或 stopped 后拒绝再追加文本。 */
     publish(type: GenerationEvent["type"], data: GenerationEvent["data"]) {
       if (terminal) return null
       const event = { id: events.length + 1, type, data }
@@ -38,9 +41,11 @@ export function createGenerationBuffer(id: string) {
       if (terminal) listeners.clear()
       return event
     },
+    /** 只回放游标之后的事件，例如已收到 3 就从 4 开始，客户端仍须按编号去重。 */
     eventsAfter(lastEventId: number) {
       return events.filter(({ id: eventId }) => eventId > lastEventId)
     },
+    /** 登记当前连接的监听器并返回取消订阅函数；终态后不再新增监听。 */
     subscribe(listener: (event: GenerationEvent) => void) {
       if (!terminal) listeners.add(listener)
       return () => listeners.delete(listener)
@@ -56,6 +61,7 @@ type GenerationManagerOptions = {
   persist: (generationId: string, update: GenerationUpdate) => Promise<unknown>
 }
 
+/** 把模型流、事件缓冲和历史写入组合为任务；数据保存通过传入的 persist 完成，不直接操作文件。 */
 export function createGenerationManager(options: GenerationManagerOptions) {
   const jobs = new Map<
     string,
@@ -66,6 +72,7 @@ export function createGenerationManager(options: GenerationManagerOptions) {
     }
   >()
 
+  /** 同一生成编号只启动一次模型流，完成后保留十分钟事件供短暂断线恢复。 */
   function start(input: { id: string; messages: ModelMessage[] }) {
     // 相同 generationId 重复启动时复用原任务，配合请求幂等避免并行调用模型。
     const existing = jobs.get(input.id)
@@ -89,6 +96,7 @@ export function createGenerationManager(options: GenerationManagerOptions) {
     return buffer
   }
 
+  /** 把逐段文本累积成完整回答，节流保存；完成、失败或取消都先保存终态，再通知订阅者。 */
   async function run(
     input: {
       id: string
@@ -102,6 +110,7 @@ export function createGenerationManager(options: GenerationManagerOptions) {
     let persistTimer: ReturnType<typeof setTimeout> | undefined
     let pendingPersist = Promise.resolve<unknown>(undefined)
 
+    /** 截取此刻内容和事件编号，按顺序写入；前一次保存失败不会堵死最后的收尾保存。 */
     const persist = (status: GenerationUpdate["status"]) => {
       const update = { content, status, lastEventId }
       // 持久化也保持顺序；某次写失败不会让后续最终状态永远排不上队。
@@ -110,6 +119,7 @@ export function createGenerationManager(options: GenerationManagerOptions) {
         .then(() => options.persist(input.id, update))
       return pendingPersist
     }
+    /** 合并 250 毫秒内到达的文本，减少小文件反复写盘，最终状态仍立即保存。 */
     const schedulePersist = () => {
       // 合并高频 token 写入，最多约每 250ms 落盘一次，而不是每个字符写一次文件。
       persistTimer ??= setTimeout(() => {
@@ -148,15 +158,18 @@ export function createGenerationManager(options: GenerationManagerOptions) {
 
   return {
     start,
+    /** 只读取内存中的任务缓冲；进程重启后不能用它续接原模型连接。 */
     get(id: string) {
       return jobs.get(id)?.buffer
     },
+    /** 向仍在运行的任务发取消信号，保留已生成文本；任务不存在或已结束时返回 false。 */
     stop(id: string) {
       const job = jobs.get(id)
       if (!job || job.buffer.terminal) return false
       job.controller.abort(new DOMException("Stopped", "AbortError"))
       return true
     },
+    /** 等待取消或完成后的保存收尾，删除会话前用它避免删完又被任务写回。 */
     async finished(id: string) {
       await jobs.get(id)?.completion
     },

@@ -13,6 +13,7 @@ contract Permit2TokenBankTest is Test {
     address user;
     uint256 userKey;
 
+    /// @notice 部署本地 Permit2、普通 ERC20 与银行，给测试签名账户准备 1000 枚。
     function setUp() public {
         (user, userKey) = makeAddrAndKey("permit2-depositor");
         permit2 = ISignatureTransfer(deployCode("lib/permit2/out/Permit2.sol/Permit2.json"));
@@ -21,6 +22,7 @@ contract Permit2TokenBankTest is Test {
         token.transfer(user, 1_000 ether);
     }
 
+    /// @notice 签名绑定 Token、金额、操作编号、银行和期限；使用本地 Permit2 的签名域。
     function signPermit(uint256 amount, bytes32 id, uint256 deadline, address spender)
         internal
         view
@@ -45,6 +47,7 @@ contract Permit2TokenBankTest is Test {
         return abi.encodePacked(r, s, v);
     }
 
+    /// @notice 用户先授权 Permit2，再签名存款；银行无普通授权也能收到 100 枚并正确记账。
     function testPermit2DepositTransfersOrdinaryERC20() public {
         uint256 amount = 100 ether;
         bytes32 id = bytes32(uint256(1));
@@ -65,6 +68,7 @@ contract Permit2TokenBankTest is Test {
         console2.log("After: bank / withdrawable BERC20", bank.balances(user));
     }
 
+    /// @notice 同编号重试不再使用签名，改金额报冲突；普通入口与 Permit2 共用余额和去重记录。
     function testReplaySharesLedgerAndCannotChangeAmount() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes32 id = bytes32(uint256(1));
@@ -85,6 +89,7 @@ contract Permit2TokenBankTest is Test {
         assertEq(permit2.nonceBitmap(user, 0), 2);
     }
 
+    /// @notice 逐项改变付款人、金额、编号、银行、链或期限，确认签名不能挪作他用。
     function testSignatureBindsCallerAmountOperationBankAndChain() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes32 id = bytes32(uint256(1));
@@ -113,6 +118,7 @@ contract Permit2TokenBankTest is Test {
         assertUnchanged(id);
     }
 
+    /// @notice 额度或余额不足时，Permit2 位图和银行操作号都回滚；补足条件后原编号仍能使用。
     function testMissingAllowanceAndInsufficientBalanceRollBackNonceAndOperation() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes32 id = bytes32(uint256(257));
@@ -136,6 +142,7 @@ contract Permit2TokenBankTest is Test {
         assertEq(bank.balances(user), 100 ether);
     }
 
+    /// @notice 没有代码的 Permit2 地址不能部署；显式禁用后拒绝该入口且不能占用编号。
     function testInvalidConfigurationAndDisabledPermit2() public {
         vm.expectRevert("Invalid Permit2");
         new IdempotentTokenBank(address(token), user);
@@ -146,6 +153,7 @@ contract Permit2TokenBankTest is Test {
         assertEq(disabled.operationHash(user, bytes32(uint256(1))), bytes32(0));
     }
 
+    /// @notice 随机金额和操作编号存入再取出；按编号高位选位图、低 8 位选已使用的那一位。
     function testFuzzNonceBitmapAndWithdraw(uint256 amount, bytes32 id) public {
         amount = bound(amount, 1, 1_000 ether);
         vm.assume(id != bytes32(0));
@@ -163,6 +171,7 @@ contract Permit2TokenBankTest is Test {
         assertEq(token.balanceOf(address(bank)), 0);
     }
 
+    /// @notice 统一核对失败后签名 nonce、操作号、个人账本与真实余额都没有变化。
     function assertUnchanged(bytes32 id) internal view {
         assertEq(permit2.nonceBitmap(user, uint256(id) >> 8), 0);
         assertEq(bank.operationHash(user, id), bytes32(0));

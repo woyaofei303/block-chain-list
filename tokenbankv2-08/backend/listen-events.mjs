@@ -18,6 +18,7 @@ const abi = parseAbi([
   'event NFTSold(address indexed seller, address indexed buyer, uint256 indexed tokenId, uint256 price)',
 ])
 
+/** 把事件中的整数转成字符串再输出；例如原始 price=1000000 不代表 1000000 个币，显示金额还需代币精度。 */
 const printLogs = (logs) => {
   for (const log of logs) {
     // JSON 不支持 bigint，输出前把 tokenId 和 price 转成十进制字符串。
@@ -34,6 +35,7 @@ let nextBlock = await client.getBlockNumber() + 1n
 let queue = Promise.resolve()
 const stop = client.watchBlockNumber({
   emitOnBegin: true,
+  /** 新区块到达时把扫描接到队尾；上一段成功后才推进 nextBlock，RPC 失败则留待下次补查。 */
   onBlockNumber(latestBlock) {
     queue = queue
       .then(async () => {

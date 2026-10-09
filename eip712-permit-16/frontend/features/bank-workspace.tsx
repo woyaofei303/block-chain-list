@@ -69,12 +69,14 @@ export function BankWorkspace({
   const validBank = isAddress(bankAddress) && bankAddress !== zeroAddress
   const enabled = isConnected && chainId === targetChain.id && validBank
 
+  /** 从当前连接取钱包 provider，再建立银行调用入口；未连接或地址无效时不向链发送请求。 */
   async function bank(signal?: AbortSignal) {
     if (!address || !connector || !validBank) throw new Error("请先连接钱包并配置银行合约")
     const provider = (await connector.getProvider()) as EIP1193Provider
     return createBank(provider, targetChain.id, bankAddress as Address, address, isCurrent, signal)
   }
 
+  /** 把异步结果与当前账户、网络、连接逐项比较；换钱包后旧响应不能继续更新这个工作区。 */
   function isCurrent() {
     const current = getConnection(wagmiConfig)
     return (
@@ -217,6 +219,7 @@ export function BankWorkspace({
     submitLabel = batch.isError ? "当前钱包无法批量存款" : "正在检查批量能力…"
   else if (!amount) submitLabel = "输入金额"
 
+  /** 打开独立的地址草稿，保存后才切换银行，避免边输入边改变当前查询目标。 */
   function openSettings() {
     setSettingsOpen(true)
   }
@@ -229,6 +232,7 @@ export function BankWorkspace({
     // 用户明确继续才开启新的执行上下文；自动轮询仍等待本次成功后恢复。
     mutation.mutate({ value, send })
   }
+  /** 校验可用余额并先保存新意图，再启动流程；已有未核实操作时禁止生成第二个编号。 */
   function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (
@@ -266,6 +270,7 @@ export function BankWorkspace({
       setStatus({ message: errorMessage(cause), tone: "error" })
     }
   }
+  /** 终止后续请求并暂停自动查询，保留恢复记录；已经广播的交易仍可能在链上完成。 */
   function stop() {
     // 终止本次写入流程，并取消本工作区的读请求；stopped 继续阻止轮询、聚焦和重连触发查询。
     // 这不会撤销已广播交易，也不能关闭钱包弹窗；晚返回的哈希仍由 persist 保存。

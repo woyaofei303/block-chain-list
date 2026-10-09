@@ -9,18 +9,20 @@ import {
 import { performance } from "node:perf_hooks"
 import { pathToFileURL } from "node:url"
 
+/** 去掉昵称两端空白并拒绝空输入；挖矿与签名随后都使用同一个规范化结果。 */
 function normalizeNickname(nickname) {
-  // 命令行参数属于外部输入，先去掉首尾空白并拒绝空昵称。
   const normalized = nickname.trim()
   if (!normalized) throw new Error("昵称不能为空")
   return normalized
 }
 
+/** 把文本变成固定长度的 SHA-256 摘要；输入相同结果相同，不能靠摘要还原原文。 */
 export function sha256Hex(text) {
   // digest("hex") 把 32 字节摘要转成 64 个十六进制字符，便于检查前导零。
   return createHash("sha256").update(text, "utf8").digest("hex")
 }
 
+/** 从 nonce=0 开始寻找前导零证明；返回找到的原料、哈希和耗时，不产生真实代币。 */
 export function mine(nickname, difficulty) {
   // difficulty 表示哈希开头必须连续出现多少个十六进制字符 0。
   const normalized = normalizeNickname(nickname)
@@ -32,7 +34,7 @@ export function mine(nickname, difficulty) {
   // performance.now() 使用单调时钟，系统时间被修改也不会影响耗时计算。
   const startedAt = performance.now()
 
-  // nonce 从 0 递增；每次都对“昵称 + nonce”重新计算 SHA-256。
+  // 每次对“昵称 + nonce”重新算哈希；多要求一个十六进制零，平均尝试量约增为 16 倍。
   for (let nonce = 0; nonce <= Number.MAX_SAFE_INTEGER; nonce += 1) {
     const hash = sha256Hex(`${normalized}${nonce}`)
     if (hash.startsWith(prefix)) {
@@ -44,6 +46,7 @@ export function mine(nickname, difficulty) {
   throw new Error("在安全整数范围内没有找到有效 nonce")
 }
 
+/** 在内存中新建 RSA 密钥，签原文，再分别验证原文和篡改文本；返回结果与各阶段耗时。 */
 export function rsaRoundTrip(message) {
   // 密码学 API 接收字节；UTF-8 转换保证中英文昵称都能稳定签名。
   const data = Buffer.from(message, "utf8")
@@ -80,6 +83,7 @@ export function rsaRoundTrip(message) {
   return { keygenMs, signMs, verifyMs, verified, tamperedVerified }
 }
 
+/** 用 P-256 椭圆曲线重复同样的签名实验；验签判断匹配关系，不是把签名解密成原文。 */
 export function eccRoundTrip(message) {
   // ECC 与 RSA 使用同一段消息，便于比较两种算法的耗时和结果。
   const data = Buffer.from(message, "utf8")
@@ -111,6 +115,7 @@ export function eccRoundTrip(message) {
   return { keygenMs, signMs, verifyMs, verified, tamperedVerified }
 }
 
+/** 打印可公开的结果，不打印密钥；verifyMs 包含原文与篡改文本两次验签。 */
 function printSignatureResult(name, result) {
   // 所有耗时统一保留三位小数，以毫秒为单位输出。
   console.log(
@@ -122,8 +127,8 @@ function printSignatureResult(name, result) {
   )
 }
 
+/** 先寻找 4 个零和 5 个零的 PoW，再对后一份证明的原文分别做 RSA 与 ECC 签名。 */
 export function run(nickname = "julian") {
-  // 主流程依次执行两个难度的 PoW，然后用 5 个零的结果完成签名实验。
   const normalized = normalizeNickname(nickname)
   console.log(`昵称: ${normalized}`)
 

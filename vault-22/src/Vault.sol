@@ -45,6 +45,8 @@ contract Vault {
 
     /// @notice 将任意 calldata 委托给逻辑合约；这是题目的 delegatecall 漏洞入口。
     fallback() external {
+        // 执行 Logic 的代码，却读写 Vault 的槽：Logic 的 password 槽在这里存的是 logic 地址。
+        // 因此比较的不是构造 Logic 时传入的秘密，而是这个公开地址对应的 32 字节值。
         (bool result,) = address(logic).delegatecall(msg.data);
         if (result) {
             this;

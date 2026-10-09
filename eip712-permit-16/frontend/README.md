@@ -1,31 +1,31 @@
-# Permit 银行前端
+# 签名银行前端：看懂每一次钱包弹窗
 
-从第 13 题复用现有 Next.js 16 / React / TypeScript / Tailwind 4 / Wagmi / Viem / TanStack Query 页面，保留普通授权、Permit、Permit2，并增加 EIP-7702 原子存款。完整安装、钱包配置、部署和联调命令统一见 [WALKTHROUGH](../WALKTHROUGH.md)，业务流程见 [总览](../README.md) 与 [请求说明](../REQUESTS.md)。
+按 [WALKTHROUGH](../WALKTHROUGH.md) 启动本地环境，再连接钱包。本篇用“钱包原有 100 JUL、存入 10”解释页面流程，详细恢复机制在 [REQUESTS](../REQUESTS.md)。
 
 ## 页面操作
 
-1. 连接具体钱包，核对账户、chain ID 和 RPC；银行设置填写本轮 `IdempotentTokenBank` 地址。
-2. 输入金额，选择“普通授权”“Permit 一笔存款”“Permit2 存款”或“EIP-7702 一笔存款”。Permit 先签署本次额度，再确认一笔存款交易；Permit2 在已有足够额度时一笔，首次无额度仍需先授权。EIP-7702 将授权与存款放入原子批次；首次操作另需 SIWE 身份签名。
-3. “取出”只可提取自己的银行存款。钱包余额、个人存款、银行总资产分别展示，禁止用总资产作为个人提款额度。
-4. 已广播后等待超时或刷新，先“核实结果”，需要继续时沿用原 operationId；终止不等于交易被撤回。
-5. 历史记录来自后端索引，可能晚于链上余额更新。服务错误和未连接状态不会伪造零余额或成功记录。
+连接具体账户后，先核对网络和银行地址。输入 10，选择方式；成功后应为钱包 90、个人存款 10，银行实际资产增加 10。取出 4 后个人剩 6，只能取自己的份额。
 
-未支持 Permit 的 Token 或旧幂等银行使用普通授权；无 operationId 的历史银行只读。金额按合约 decimals 转为 bigint，拒绝零、负数、科学计数法、超精度及超额。
+钱包可能先要求 SIWE 登录签名，这只是证明身份。随后几种方式的弹窗用途不同：
+
+- 普通：额度不足时 approve 交易，再 deposit 交易。
+- Permit：签本次 10 JUL 授权，再发一笔 permitDeposit。
+- Permit2：若 Token 对 Permit2 额度不足，先 approve 本次金额，再签一次性许可和存款；已有足够额度才省去前一笔。
+- EIP-7702：钱包支持时，把授权与存款原子执行；升级账户的提示不等于银行扣款。
+
+金额按 decimals 转 bigint，拒绝零、负数、科学计数法、超精度与超额。签名只对指定链、合约、金额和有效期有效，不随意确认不认识的数据。
+
+已广播后超时，先核实原操作；终止只停止等待，不撤回交易。历史由后端索引，可能晚于余额；服务失败不会被伪装成“余额零”或“存款成功”。
 
 ## 配置与源码
 
-`.env.example` 仅含公开参数；`.env.local` 不纳入 Git。默认本地 RPC 为 `8547`，演示页面端口为 `3016`，`INDEXER_URL` 指向后端 `13016`。`NEXT_PUBLIC_` 进入浏览器，不能保存密钥。生产构建会固定公开环境变量，修改后须重新构建。
+普通本地指南使用 RPC 8547、后端 13016、页面 3016；独立 Permit2 指南使用 8548、13018、3018。这两条链的资产互不共享，所有地址必须来自同一轮配置。
 
-- `features/bank-dashboard.tsx` / `bank-workspace.tsx`：原页面布局及工作区。
-- `domains/bank/client.ts`：余额、金额、账户/网络校验、Permit、模拟、交易与回执。
-- `domains/operations/client.ts`：登录、持久化意图、幂等和恢复。
-- `shared/request.ts` / `error-queue.ts`：HTTP 并发 6、取消、错误容量 3。
-- `app/api/`：Next 同源代理；浏览器不直接连接数据库。
-- `scripts/permit-setup.mts`：本地部署入口，stdout 为 JSON，提示写 stderr，便于命令行保存配置。
+`NEXT_PUBLIC_` 会进入浏览器，不能存密钥；INDEXER_URL 留服务端。公开环境变量改变后，生产构建需重做，不要让 dev、build、start 并发使用同一目录。
 
-本目录使用 pnpm 与原锁文件，Husky 仍指向仓库共享钩子。请勿与同目录开发/生产服务同时运行 build。
+先读 `features/bank-workspace.tsx` 的模式选择，再读 `domains/operations/client.ts` 的意图与恢复、`domains/bank/client.ts` 的签名与交易。`app/api` 只是同源代理，浏览器不直连数据库。
 
-从本项目根目录执行：
+在项目根目录执行检查：
 
 ```bash
 pnpm --dir frontend lint
@@ -34,12 +34,16 @@ pnpm --dir frontend typecheck
 pnpm --dir frontend test
 pnpm --dir frontend test:integration
 pnpm --dir frontend test:permit
-pnpm --dir frontend build
+pnpm --dir frontend test:permit2
 ```
 
-普通 RPC 测试验证历史银行只读、普通授权、取消与恢复；Permit RPC 测试直接调用生产客户端，并完成 NFT 白名单购买。它们使用独立 Anvil，不要求真实钱包扩展，也不能当作人工扩展钱包验收。
+这些 RPC 测试用独立 Anvil，不能代替实际钱包扩展测试。2026-10-09 已通过 19 项前端测试、本地存取款及 Permit/Permit2 集成，lint 和类型检查也通过；指定 Delegator 字节码的集成场景跳过，未启动页面做扩展钱包验收。下面保留 EIP-7702 的具体约束和历史验证，先理解流程再读协议细节。
 
 ## EIP-7702 一笔存款
+
+可以把原子批次理解为“一张申请单里的两个动作同时生效”：先 approve、后 deposit，第二步失败时第一步也撤销。它依赖钱包支持，不是简单连发两次交易。
+
+
 
 题目基于 [TokenBank 前端练习](https://decert.me/quests/56e455b3-901c-415d-90c0-a20759469cf9)。本实现沿用现有 `IdempotentTokenBank.deposit(uint256,bytes32)`，没有修改合约，也不开放旧版银行的写入口。
 
@@ -74,6 +78,6 @@ EIP7702_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com pnpm test:integratio
 
 参考：[MetaMask 官方 Delegator 地址](https://support.metamask.io/configure/accounts/what-is-a-smart-account)、[MetaMask 批量交易](https://docs.metamask.io/metamask-connect/evm/guides/send-transactions/send-batch-transactions/)、[EIP-5792](https://eips.ethereum.org/EIPS/eip-5792)、[官方执行合约](https://github.com/MetaMask/delegation-framework/blob/v1.3.0/src/EIP7702/EIP7702DeleGatorCore.sol)。
 
-2026-09-24 本次实测：19 项前端单元测试、普通存取款与官方 Delegator 原子执行/整体回滚集成、Permit 与 Permit2 RPC 回归、两种签名存款的 PostgreSQL 全栈回归、lint、格式、类型检查及生产构建通过。浏览器确认四种入口同时保留，可切换普通授权、EIP-7702 与提款；未操作真实钱包扩展签名，未向公共链广播。公共 RPC 直连首次超时，使用系统代理后完成官方字节码测试。
+历史记录（2026-09-24）：19 项前端单元测试、普通存取款与官方 Delegator 原子执行/整体回滚集成、Permit 与 Permit2 RPC 回归、两种签名存款的 PostgreSQL 全栈回归、lint、格式、类型检查及生产构建通过。浏览器确认四种入口同时保留，可切换普通授权、EIP-7702 与提款；未操作真实钱包扩展签名，未向公共链广播。公共 RPC 直连首次超时，使用系统代理后完成官方字节码测试。
 
-本轮页面使用已保存的 Permit2 环境：`http://127.0.0.1:3018`，钱包 RPC 为 `http://127.0.0.1:8548`，chain ID 为 `31337`。前后端已启动，索引追平区块 11。该链与原 `8547` 的资产独立；原链状态及数据库保留。本地 MetaMask 是否允许 EIP-7702 仍以页面能力检查为准，不影响普通、Permit、Permit2。
+该轮页面使用当时保存的 Permit2 环境：`http://127.0.0.1:3018`，钱包 RPC 为 `http://127.0.0.1:8548`，chain ID 为 `31337`。当时前后端已启动，索引追平区块 11；不表示这些服务当前在线。该链与原 `8547` 的资产独立；原链状态及数据库保留。本地 MetaMask 是否允许 EIP-7702 仍以页面能力检查为准，不影响普通、Permit、Permit2。

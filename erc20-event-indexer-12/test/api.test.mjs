@@ -7,9 +7,11 @@ const token = `0x${'a'.repeat(40)}`
 const alice = `0x${'1'.repeat(40)}`
 const bob = `0x${'2'.repeat(40)}`
 
+// 用假的数据库故障检查校验顺序和统一错误响应。
 test('API 先校验参数，异步数据库错误统一返回 JSON 且不泄漏内部信息', async (t) => {
   let queries = 0
   const db = {
+    /** 让假的数据库抛出带内部信息的错误，检查 HTTP 响应不泄漏详情且非法输入不触库。 */
     async query() {
       queries += 1
       throw new Error('private database connection details')

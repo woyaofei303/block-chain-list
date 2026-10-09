@@ -1,19 +1,35 @@
-# Vault CTF：delegatecall、存储碰撞与重入
+# 22 · Vault 本地安全题：存储错位与重入为什么会丢钱
 
-本项目是一个本地 Foundry 安全练习。题目要求阅读 `Vault.sol`，编写攻击合约清空 Vault，并让 Forge 测试通过。合约故意保留漏洞，仅用于本地 EVM 验证，不应部署到公共链。
+这是故意保留漏洞的本地 CTF（安全练习题）。学习目标是读懂一条错误链：代理用错存储位置，攻击合约成为 owner，再利用“先转钱后清账”重复提款。只在仓库测试与自己的 Anvil 中复现。
 
-## 代码阅读顺序
+先读 [18 的存储槽](../esrnt-storage-18/README.md) 和 [21 的代理](../upgradeable-nft-market-21/README.md)，这里正好展示不遵守布局约束的后果。
 
-1. [项目规则](AGENTS.md)：验证范围、秘密和本地产物边界。
-2. [src/Vault.sol](src/Vault.sol)：Vault、逻辑合约、存储布局及提款流程。
-3. [test/Vault.t.sol](test/Vault.t.sol)：`VaultHacker` 的 ABI 编码、owner 接管和重入 PoC。
-4. [script/Vault.s.sol](script/Vault.s.sol)：使用 Forge CLI 发送者部署逻辑合约和 Vault。
+## 第一个问题：同一个槽被解释成两种数据
 
-## 漏洞链
+```text
+Vault 的 slot 0 = owner       VaultLogic 的 slot 0 = owner
+Vault 的 slot 1 = logic 地址  VaultLogic 的 slot 1 = password
+```
 
-`Vault` 的 `fallback()` 将任意 calldata `delegatecall` 到 `VaultLogic`。两份合约的存储布局不兼容：Vault 的 slot 1 是 `logic` 地址，而逻辑合约把 slot 1 当作 `password`。因此攻击者可以把逻辑合约地址按 `bytes32` ABI 编码，调用 `changeOwner` 并改写 Vault slot 0 的 `owner`。
+Vault 的 fallback 把请求 delegatecall 给 VaultLogic，执行的是后者代码，却读取 Vault 的存储。于是 VaultLogic 检查 password 时，实际拿到 Vault 的 logic 地址。
 
-接管 owner 后，攻击者调用 `openWithdraw()`，再存入一笔 ETH。`withdraw()` 在外部转账之后才把存款清零，攻击合约的 `receive()` 可以重入并重复提取同一笔存款。本题的测试状态中，攻击者存入 `0.1 ETH` 后重入一次，正好清空 Vault 的 `0.2 ETH` 余额。
+测试使用已知逻辑地址构造这个槽的值，调用 `changeOwner` 后改的是 Vault 的 owner。这里不是破解强密码，而是程序把错误位置的数据当作密码比较。
+
+## 第二个问题：钱已转出，账还没扣
+
+原存款人为 Vault 放入 0.1 ETH。攻击合约接管 owner 后开启提款，再存入自己的 0.1 ETH，此时 Vault 有 0.2 ETH。
+
+提款先发送 0.1，尚未把攻击者存款清零；攻击合约的 `receive` 在收款时再调一次 withdraw，旧账仍显示可提 0.1，于是又转出 0.1。最后两层调用返回才清账，Vault 余额归零。
+
+**重入**就是外部调用尚未结束，接收方回头再次进入同一业务。这里测试的余额正好支持一次重入；不要把这个固定示例推广为任意余额都必然成功。
+
+## 先跟测试，不直接部署到公共链
+
+[Vault.t.sol](test/Vault.t.sol) 的 `setUp` 建立原始存款，`testExploit` 发起攻击，最后检查 `isSolve()`。对照调用轨迹，重点看 owner 何时变化，以及两次转账之间 `deposites` 为什么还是旧数。
+
+注意源码中的 `deposite` / `deposites` 保留题目拼写。直接 ETH 转账只进入 `receive`，不会记入这份存款映射。
+
+防御上应保持代理布局兼容、限制敏感入口，提款先更新状态再调用外部合约，并根据场景设置重入保护。本课保留漏洞供观察，不把它改成生产钱包。2026-10-09 已在测试 EVM 中通过攻击回归测试，没有向公共链广播。原题仍有构造器可见性及未赋值返回值的编译告警，未把此教学漏洞合约改造成生产实现。
 
 ## 本地测试
 
@@ -63,7 +79,7 @@ forge script script/Vault.s.sol:VaultScript \
 从广播输出记录 `Vault deployed at` 后设置地址并核验代码、余额和解题状态：
 
 ```bash
-export VAULT_ADDRESS="0x0000000000000000000000000000000000000000"
+export VAULT_ADDRESS="<本次脚本输出的Vault地址>"
 cast code "$VAULT_ADDRESS" --rpc-url "$VAULT_RPC_URL"
 cast balance "$VAULT_ADDRESS" --ether --rpc-url "$VAULT_RPC_URL"
 cast call "$VAULT_ADDRESS" 'isSolve()(bool)' --rpc-url "$VAULT_RPC_URL"

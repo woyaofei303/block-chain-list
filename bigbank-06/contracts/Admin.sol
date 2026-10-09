@@ -12,15 +12,18 @@ contract Admin {
 
     event Received(address indexed sender, uint256 amount);
 
+    /// @notice 记住创建 Admin 的账户；它能发起提款，但收到的钱仍留在 Admin 中。
     constructor() {
         owner = msg.sender;
     }
 
-    // 接收 Bank.withdraw() 转来的 ETH，资金保留在 Admin 合约中。
+    /// @notice 接收 Bank.withdraw() 转来的 ETH；本合约没有再把钱转给 owner 的入口。
     receive() external payable {
         emit Received(msg.sender, msg.value);
     }
 
+    /// @notice owner 请 Admin 代为调用银行提款；银行须已把管理员设为本合约。
+    /// @dev owner → Admin → Bank 是两次调用；任一步拒绝都会回滚本次操作。
     function adminWithdraw(IBank bank) external {
         if (msg.sender != owner) {
             revert OnlyOwner();

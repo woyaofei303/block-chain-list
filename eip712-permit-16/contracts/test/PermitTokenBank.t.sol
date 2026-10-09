@@ -11,6 +11,7 @@ contract PermitTokenBankTest is Test {
     address user;
     uint256 userKey;
 
+    /// @notice 创建虚拟签名账户、JUL 与银行，给用户 1000 枚；这一组测试关闭 Permit2。
     function setUp() public {
         (user, userKey) = makeAddrAndKey("depositor");
         token = new JulianToken();
@@ -18,6 +19,7 @@ contract PermitTokenBankTest is Test {
         token.transfer(user, 1_000 ether);
     }
 
+    /// @notice 按 Token 当前 nonce 和签名域生成授权摘要，仅用 Forge 生成的测试密钥签名。
     function signPermit(uint256 amount, uint256 deadline) internal view returns (uint8 v, bytes32 r, bytes32 s) {
         bytes32 hash = keccak256(
             abi.encodePacked(
@@ -38,6 +40,7 @@ contract PermitTokenBankTest is Test {
         return vm.sign(userKey, hash);
     }
 
+    /// @notice 初始授权为零时，用一次签名存入 100 枚，核对余额、可提额和 nonce。
     function testPermitDepositTransfersTokensWithoutApprove() public {
         uint256 amount = 100 ether;
         uint256 deadline = block.timestamp + 1 hours;
@@ -57,6 +60,7 @@ contract PermitTokenBankTest is Test {
         console2.log("After: withdrawable JUL", bank.balances(user));
     }
 
+    /// @notice 别人先提交了 permit 后，本人仍可凭已生效额度完成存款，nonce 不再增加。
     function testPermitCanBeSubmittedBeforeDeposit() public {
         uint256 deadline = block.timestamp + 1 hours;
         (uint8 v, bytes32 r, bytes32 s) = signPermit(100 ether, deadline);
@@ -67,6 +71,7 @@ contract PermitTokenBankTest is Test {
         assertEq(token.nonces(user), 1);
     }
 
+    /// @notice 他人不能冒用持有人的签名；已用签名换一个操作编号也不能再次扣款。
     function testReplayAndForgedCallerCannotSpend() public {
         uint256 deadline = block.timestamp + 1 hours;
         (uint8 v, bytes32 r, bytes32 s) = signPermit(100 ether, deadline);
@@ -82,6 +87,7 @@ contract PermitTokenBankTest is Test {
         assertEq(token.balanceOf(user), 900 ether);
     }
 
+    /// @notice 改金额、换链或过期都须失败，并保留原余额和未使用的 nonce。
     function testExpiredTamperedAndWrongChainPermitRejectWithoutChanges() public {
         uint256 deadline = block.timestamp + 1 hours;
         (uint8 v, bytes32 r, bytes32 s) = signPermit(100 ether, deadline);
@@ -100,6 +106,7 @@ contract PermitTokenBankTest is Test {
         assertEq(token.balanceOf(user), 1_000 ether);
     }
 
+    /// @notice 签名额度足够但实际余额不足时，前面生效的授权与 nonce 也必须回滚。
     function testInsufficientFundsRollsBackPermit() public {
         uint256 deadline = block.timestamp + 1 hours;
         (uint8 v, bytes32 r, bytes32 s) = signPermit(1_001 ether, deadline);
@@ -111,6 +118,7 @@ contract PermitTokenBankTest is Test {
         assertEq(bank.balances(user), 0);
     }
 
+    /// @notice 直接转币不记个人账，普通存取仍可用；核对银行资产与可提余额为何不同。
     function testOrdinaryDepositWithdrawAndDirectTransfer() public {
         vm.startPrank(user);
         token.transfer(address(bank), 10 ether);
@@ -132,6 +140,7 @@ contract PermitTokenBankTest is Test {
         assertEq(token.balanceOf(user), 930 ether);
     }
 
+    /// @notice 对多组合法金额完整存入再取出，最终用户资产恢复且银行账本归零。
     function testFuzzPermitDepositAndWithdraw(uint256 amount) public {
         amount = bound(amount, 1, 1_000 ether);
         uint256 deadline = block.timestamp + 1 hours;
@@ -145,6 +154,7 @@ contract PermitTokenBankTest is Test {
         assertEq(token.balanceOf(address(bank)), 0);
     }
 
+    /// @notice 签名存款成功后，从普通或签名入口重放同一编号都不能再扣钱。
     function testPermitAndOrdinaryDepositShareIdempotency() public {
         uint256 deadline = block.timestamp + 1 hours;
         (uint8 v, bytes32 r, bytes32 sigS) = signPermit(100 ether, deadline);

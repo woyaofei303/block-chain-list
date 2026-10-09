@@ -13,6 +13,7 @@ type BankBalancesProps = {
 export function BankBalances({ bankAddress, snapshot }: BankBalancesProps): JSX.Element {
   const validBank = isAddress(bankAddress) && bankAddress !== zeroAddress
   const symbol = snapshot?.symbol ?? "TOKEN"
+  /** 只在展示时按合约精度移动小数点，计算仍用 bigint；6 位精度的 1250000 显示为 1.25。 */
   const formatted = (value: bigint) => formatUnits(value, snapshot?.decimals ?? 18)
 
   return (

@@ -11,6 +11,7 @@ export type Transfer = {
   valueRaw: string
 }
 
+/** 每页读取 10 条已索引记录，并核对链、代币、账户和精度；不匹配时拒绝显示，避免串用另一银行的数据。 */
 export async function loadTransfers(
   endpoint: string,
   expected: {

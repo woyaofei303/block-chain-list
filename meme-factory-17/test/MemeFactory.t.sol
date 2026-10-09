@@ -10,10 +10,12 @@ import {MemeToken} from "../src/MemeToken.sol";
 contract RejectingRecipient {
     bool public rejects = true;
 
+    /// @notice 解除测试收款方的拒收状态，让同一购买流程有机会重试成功。
     function acceptPayments() external {
         rejects = false;
     }
 
+    /// @notice 默认拒收 ETH，供测试验证外层铸币与分账是否全部回滚。
     receive() external payable {
         require(!rejects, "Payment rejected");
     }
@@ -27,12 +29,14 @@ contract ReentrantRecipient {
     bool public succeeded;
     bytes public reason;
 
+    /// @notice 保存回调时要攻击的工厂、币和费用，配置后才开始模拟重入。
     function arm(MemeFactory factory_, address token_, uint256 cost_) external {
         factory = factory_;
         token = token_;
         cost = cost_;
     }
 
+    /// @notice 只尝试一次回调铸币并保存错误，避免测试本身陷入无尽递归。
     receive() external payable {
         if (!attempted) {
             attempted = true;
@@ -48,6 +52,7 @@ contract MemeFactoryTest is Test {
     MemeFactory private factory;
     MemeToken private token;
 
+    /// @notice 每项测试重新创建 DOG：上限 300、每批 100、单价 1 gwei，并给买家准备资金。
     function setUp() public {
         vm.prank(PLATFORM);
         factory = new MemeFactory();
@@ -56,6 +61,7 @@ contract MemeFactoryTest is Test {
         vm.deal(BUYER, 1 ether);
     }
 
+    /// @notice 核对买家得到 100 DOG，同时 100 gwei 按 1 与 99 分给平台和发行者。
     function testMintPaysOnePercentToPlatformAndRemainderToIssuer() public {
         uint256 cost = 100 * 1 gwei;
         uint256 buyerBefore = BUYER.balance;
@@ -73,6 +79,7 @@ contract MemeFactoryTest is Test {
         emit log_named_uint("issuer received wei", ISSUER.balance);
     }
 
+    /// @notice 三次各铸 100 达到上限；第四次失败，余额与总发行量不能继续增加。
     function testEveryMintHasFixedAmountAndCannotExceedTotalSupply() public {
         for (uint256 i = 1; i <= 3; i++) {
             vm.prank(BUYER);
@@ -94,14 +101,17 @@ contract MemeFactoryTest is Test {
         emit log_named_uint("maximum supply", token.maxSupply());
     }
 
+    /// @notice 发行者收到分账时尝试再次铸币，应被重入锁拦住。
     function testIssuerCannotReenterMintDuringPayment() public {
         _assertReentryBlocked(false);
     }
 
+    /// @notice 平台收款回调同样不能绕过重入锁，不能只保护发行者这一侧。
     function testPlatformCannotReenterMintDuringPayment() public {
         _assertReentryBlocked(true);
     }
 
+    /// @notice 分别把攻击合约当平台或发行者；先给足攻击资金，再核对失败确由重入锁导致。
     function _assertReentryBlocked(bool attackAsPlatform) private {
         ReentrantRecipient recipient = new ReentrantRecipient();
         if (attackAsPlatform) {
@@ -127,6 +137,7 @@ contract MemeFactoryTest is Test {
         assertEq(address(factory).balance, 0);
     }
 
+    /// @notice 核对 45 字节代理指向同一实现，且两种币的参数、余额和供应量相互独立。
     function testCloneBytecodeMetadataAndStorageIsolation() public {
         vm.prank(BUYER);
         MemeToken second = MemeToken(factory.deployMeme("CAT", 50, 5, 2 gwei));
@@ -158,6 +169,7 @@ contract MemeFactoryTest is Test {
         assertEq(MemeToken(factory.implementation()).totalSupply(), 0);
     }
 
+    /// @notice 实现禁止初始化，代理初始化一次后也不能再改发行参数。
     function testImplementationAndCloneCannotBeInitializedAgain() public {
         MemeToken implementation = MemeToken(factory.implementation());
         vm.expectRevert(Initializable.InvalidInitialization.selector);
@@ -170,6 +182,7 @@ contract MemeFactoryTest is Test {
         assertEq(token.maxSupply(), 300);
     }
 
+    /// @notice 发行者也不能直接调用代币 mint；发行必须经过工厂的付费与分账检查。
     function testOnlyFactoryCanMintEvenIssuerCannotBypassPayment() public {
         vm.expectRevert("Only factory");
         vm.prank(ISSUER);
@@ -180,6 +193,7 @@ contract MemeFactoryTest is Test {
         assertEq(token.totalSupply(), 0);
     }
 
+    /// @notice 拒绝空符号、非法批量和会导致费用乘法溢出的发行参数。
     function testRejectsInvalidDeploymentParameters() public {
         vm.expectRevert("Empty symbol");
         factory.deployMeme("", 100, 10, 1);
@@ -193,6 +207,7 @@ contract MemeFactoryTest is Test {
         factory.deployMeme("BAD", 2, 2, type(uint256).max);
     }
 
+    /// @notice 当前工厂只认自己登记的币；其他工厂的合法代理也不能混进来。
     function testRejectsUnregisteredTokensIncludingAnotherFactoryClone() public {
         MemeFactory other = new MemeFactory();
         address foreignToken = other.deployMeme("FOREIGN", 10, 1, 0);
@@ -204,6 +219,7 @@ contract MemeFactoryTest is Test {
         assertEq(MemeToken(foreignToken).totalSupply(), 0);
     }
 
+    /// @notice 少付和多付都拒绝，失败前后的供应量、买家余额和收款余额须相同。
     function testUnderpaymentAndOverpaymentRevertWithoutChangingState() public {
         vm.startPrank(BUYER);
         vm.expectRevert("Incorrect payment");
@@ -219,6 +235,7 @@ contract MemeFactoryTest is Test {
         assertEq(address(factory).balance, 0);
     }
 
+    /// @notice 上限不是批量的整数倍时，最后不足一批不能卖成缩水的一批。
     function testRemainingSupplySmallerThanBatchIsNotPartiallyMinted() public {
         vm.prank(ISSUER);
         MemeToken uneven = MemeToken(factory.deployMeme("ODD", 250, 100, 1));
@@ -235,6 +252,7 @@ contract MemeFactoryTest is Test {
         assertEq(BUYER.balance, 1 ether - 200);
     }
 
+    /// @notice 99 Wei 的平台费为 0，不应调用拒收方；101 Wei 则分为 1 和 100。
     function testRoundingDustGoesToIssuerAndZeroFeeSkipsTransfer() public {
         RejectingRecipient platform = new RejectingRecipient();
         vm.prank(address(platform));
@@ -254,6 +272,7 @@ contract MemeFactoryTest is Test {
         assertEq(ISSUER.balance, 199);
     }
 
+    /// @notice 免费铸造不向任何收款方发起零额转账，即使双方拒收也应成功。
     function testFreeMintWorksEvenWhenBothRecipientsRejectEth() public {
         RejectingRecipient recipient = new RejectingRecipient();
         vm.startPrank(address(recipient));
@@ -268,14 +287,17 @@ contract MemeFactoryTest is Test {
         assertEq(address(freeFactory).balance, 0);
     }
 
+    /// @notice 发行者拒收时，先前的铸币和平台收款也必须回滚。
     function testIssuerRejectingEthRollsBackMintAndPlatformPayment() public {
         _assertPaymentRollback(false);
     }
 
+    /// @notice 平台拒收时不能留下铸币；改为接受收款后可重新购买。
     function testPlatformRejectingEthRollsBackMintAndAllowsRetry() public {
         _assertPaymentRollback(true);
     }
 
+    /// @notice 按参数切换拒收方，逐项核对失败后资产不变，以及恢复后正常分账。
     function _assertPaymentRollback(bool rejectAsPlatform) private {
         RejectingRecipient recipient = new RejectingRecipient();
         if (rejectAsPlatform) {
@@ -306,6 +328,7 @@ contract MemeFactoryTest is Test {
         assertEq(address(factory).balance, 0);
     }
 
+    /// @notice 代理铸币后仍支持标准转账和授权扣款，转来转去不改变总供应量。
     function testCloneSupportsErc20TransfersAndAllowances() public {
         vm.prank(BUYER);
         factory.mintMeme{value: 100 gwei}(address(token));
@@ -321,6 +344,7 @@ contract MemeFactoryTest is Test {
         assertEq(token.totalSupply(), 100);
     }
 
+    /// @notice 随机组合单价、批量与尾数，逐笔检查金额守恒和不超发，舍入按每一笔计算。
     function testFuzzFixedBatchesConserveFeesAndRespectCap(uint64 unitPrice, uint32 batch, uint8 batches, uint32 dust)
         public
     {
@@ -349,6 +373,7 @@ contract MemeFactoryTest is Test {
         assertLe(fuzzToken.totalSupply(), fuzzToken.maxSupply());
     }
 
+    /// @notice 比较创建并初始化代理与部署完整实现的 Gas；固定相同编译环境才有可比性。
     function testCloneCreationUsesLessGasThanDeployingFullImplementation() public {
         uint256 beforeClone = gasleft();
         address clone = factory.deployMeme("GAS", 300, 100, 1 gwei);

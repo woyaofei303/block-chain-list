@@ -1,72 +1,73 @@
-# Token Bank 转账后端
+# 银行后端：核实一笔操作，查询一页历史
 
-新增请求与幂等闭环请先读 [REQUESTS.md](../REQUESTS.md)，其中说明新版银行、SIWE 会话、操作表、取消和恢复边界。
+先按 [项目入口](../README.md) 和 [操作指南](../WALKTHROUGH.md) 准备合约。后端处理两类工作：证明“哪位用户请求了什么，并且链上是否完成”，以及把 Token 转账整理成可查询记录。它不保管私钥，不替用户签交易。
 
-从本项目合约读取 ERC20 `Transfer`，按确认区块分批保存到 PostgreSQL，向前端提供 `GET /transfers`。它不管理钱包、不签名，也不代替银行合约判断可提余额。
+## 用一笔 10 JUL 存款理解职责
 
-先读 [项目规则](../AGENTS.md) 和 [完整操作流程](../WALKTHROUGH.md)。代码来自原转账索引练习，在本项目独立维护；无需启动兄弟项目。
+用户登录后登记操作编号。钱包广播存款，后端收到交易哈希线索，再查银行操作标记、事件和回执；确认账户、金额、动作、银行都匹配，才报告业务成功。
 
-源码与测试统一使用 TypeScript。Node.js 原生运行 `.ts`，无需构建或额外运行器；`tsc --noEmit` 负责严格类型检查。使用普通 TypeScript 类型和现有输入校验，不额外引入 Zod。
+与此同时，索引器扫描 Token 的 Transfer，把用户到银行的转账写进数据库。两条工作线可能不同时完成：存款已成功，不代表历史列表已经追平。Permit 与 Permit2 也记录为 deposit；授权方式不同，不改变存款账本的含义。
 
 ## 配置与启动
 
-以下在 `backend/` 执行，需要 Node.js 24+ 和 PostgreSQL：
+需要 Node.js 24+ 和已运行的 PostgreSQL。从仓库根目录进入：
 
 ```bash
+cd eip712-permit-16/backend
 npm ci
 test -f .env || cp .env.example .env
 ```
 
-按实际部署填写 `.env`：
+若已按操作指南准备 session 配置，直接加载它；不要再填写另一组冲突地址。手工配置时重点核对：
 
-- `RPC_URL`、`CHAIN_ID`：目标节点与链 ID。默认本地 `8547` / `31337`。
-- `TOKEN_ADDRESS`：必须填写本项目实际 Token 地址，不能填银行地址、零地址或沿用其他练习的默认代币。
-- `START_BLOCK`：Token 部署区块；恢复索引时保持与原配置一致。
-- `PGHOST`、`PGPORT`、`PGDATABASE`：本机 PostgreSQL。程序默认数据库名 `tokenbank_permit_16`，数据库须事先存在。
-- `CONFIRMATIONS`：默认 `12`；本地按交易出块的 Anvil 可显式设为 `0`。
-- `BATCH_SIZE`、`POLL_INTERVAL_MS`：默认 `2000` 块和 `12000` 毫秒。
-- `BANK_ADDRESS`：本轮幂等银行地址，启用操作写接口；须与前端一致。
-- `PUBLIC_ORIGIN`：实际浏览器来源，默认 `http://127.0.0.1:3016`；登录及写请求检查来源。
-- `HOST`、`PORT`：默认仅监听 `127.0.0.1:13016`。
+- `RPC_URL / CHAIN_ID / TOKEN_ADDRESS / START_BLOCK`：同一条链上的 Token 及部署起点。
+- `BANK_ADDRESS`：本轮幂等银行，后端会核对 token 和幂等查询接口；留空只提供原只读索引服务。
+- `PUBLIC_ORIGIN`：浏览器实际访问的协议、主机和端口，决定登录与写接口来源检查。
+- `PGHOST / PGPORT / PGDATABASE` 等：已有数据库连接，数据库必须先创建。
+- `HOST / PORT`：本地监听地址；与前端服务端的 INDEXER_URL 对应。
+- `CONFIRMATIONS / BATCH_SIZE / POLL_INTERVAL_MS`：确认等待、每批区块数与轮询间隔。
+
+数据库密码只在忽略的本地配置或已有认证方式中设置。启动后程序核对链与合约，再加载 [schema.sql](../database/schema.sql)，不清空原数据。
 
 ```bash
 npm start
 ```
 
-只追到本轮确认高度后退出：
+`npm run scan` 只做本轮扫描后退出。默认按确认高度扫描，本地按交易出块的 Anvil 在指南中设置 `CONFIRMATIONS=0`，公共链不要直接沿用。
 
-```bash
-npm run scan
-```
+## 查询后如何判断空结果
 
-程序校验网络、读取代币精度，加载 [数据库结构](../database/schema.sql)，保留已有记录和进度。更换链、代币或从零重建本地链时使用独立数据库；不要清空仍用于复习的历史数据。
-
-## 查询与边界
+按指南启动后，在任意终端替换钱包地址进行只读查询；端口若已改动，URL 同步更换：
 
 ```bash
 curl --fail --silent --show-error \
-  'http://127.0.0.1:13016/transfers?address=0x填写钱包地址&limit=10&offset=0'
+  'http://127.0.0.1:13016/transfers?address=0x填写完整钱包地址&limit=10&offset=0'
 ```
 
-`address` 必填，查询收支，自转账只计一次。`limit` 为 1～100，`offset` 为非负安全整数；重复参数拒绝。结果包含 chainId、tokenAddress、symbol、decimals、address、indexedThrough 和 transfers；区块及金额用字符串传输，金额不经过浮点数。
+`address` 必填，`limit` 1～100，`offset` 为非负安全整数，同名参数不能重复。返回含 chainId、tokenAddress、decimals、indexedThrough 和 transfers。
 
-`indexedThrough=null` 表示尚未完成首批扫描，包括正在等待确认区块；有检查点后才返回已扫描区块号。
+空数组仍可返回 200，含义是当前索引范围没有匹配记录。先比较 `indexedThrough` 和交易区块；为 null 时尚未完成首批扫描。参数错误返回 400，未知路由 404，转账查询方法不支持为 405，数据库故障为 500。
 
-参数错误返回 400，未知路径 404，非 GET 405，数据库查询失败 500。空结果返回 200，但要结合 indexedThrough 判断是否已扫描到目标交易。链上回执成功与索引可见是两个阶段。
+金额与区块号用字符串返回，不能随手 Number()。一笔交易多条日志要分别保留；自转账在一次地址查询中只返回一条。
 
-一批事件与进度同事务提交；失败回滚后从原进度重试；主键避免重复。发现检查点哈希变化时，仅重建该链该代币的索引。该全量重扫策略适合练习规模。
+## 数据为什么能在失败后恢复
 
-按以下顺序阅读，浏览器经 Next.js 同源代理访问，不连接数据库：
+一次扫块的事件与进度放在同一数据库事务提交。若写入中断，二者一起回滚；重试再扫时通过唯一键避免重复。
 
-1. `src/main.ts`、`src/config.ts`：进程生命周期、配置类型与环境变量校验。
-2. `src/transfers/types.ts`：扫描配置、代币信息、分页查询、数据库记录与 HTTP 响应的领域类型；金额和区块号在接口中保持字符串。
-3. `src/transfers/indexer.ts`：扫描、事务与检查点；RPC 能力和扫描进度类型就近定义。
-4. `src/transfers/repository.ts`：表初始化和带结果类型的参数化查询。
-5. `src/app.ts`、`src/transfers/router.ts`：HTTP 组合、参数校验、响应格式和统一错误处理。
+检查点保存最后处理区块的哈希。发生链重组时，该项目重新建立目标链、目标 Token 的索引，适合教学规模；不要把这描述成“数据库永久保存不可变事实”。
 
-TypeScript 不能代替运行时校验：环境变量、地址、分页和 RPC 网络核对仍在执行时检查。模块之间只共享实际需要的类型，不额外增加 service 或通用仓储层。
+业务操作同样有唯一键。同编号同参数返回原记录，参数冲突报 409；账户来自已认证会话，不能相信请求正文里随便写的钱包地址。详见 [REQUESTS](../REQUESTS.md)。
 
-## 检查
+## 对照源码和测试
+
+先读 [main.ts](src/main.ts) 的启动接线，再分两条路线：
+
+1. 操作：`src/operations/router.ts → repository.ts / chain.ts`，看输入、保存和链上核实。
+2. 历史：`src/transfers/indexer.ts → repository.ts → router.ts`，看扫描与查询。
+
+TypeScript 在开发时检查类型；环境变量、HTTP 参数和 RPC 返回仍需运行时校验。SQL 使用参数化查询，错误响应不回传凭据或内部堆栈。
+
+在 backend 目录执行：
 
 ```bash
 npm run lint
@@ -74,9 +75,6 @@ npm run format:check
 npm run typecheck
 npm test
 npm run test:integration
-TEST_PERMIT=1 npm run test:integration
 ```
 
-测试默认在本机 `postgres` 数据库建立随机 schema，清理范围只限本次 schema。完整集成测试还需要 Foundry 和同项目前端依赖，验证实际合约、银行客户端、索引、HTTP 和前端代理，不发送公共网络交易。
-
-共享提交钩子对本后端依次运行暂存文件 lint/format、严格类型检查和普通测试；完整集成测试使用 `npm run test:integration` 单独执行。
+数据库测试使用临时随机 schema；完整集成还需本项目前端依赖与 Foundry，启动独立 Anvil 后自动清理。2026-10-09 已通过 4 项后端测试和完整本地集成，lint 与类型检查也通过；测试使用独立 schema 并在结束后清理。

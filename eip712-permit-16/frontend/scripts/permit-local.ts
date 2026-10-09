@@ -38,6 +38,7 @@ export async function deployPractice(url: string) {
   const [seller, buyer] = await wallet.getAddresses()
   assert.ok(seller && buyer, "需要两个 Anvil 解锁模拟账户")
   const root = resolve(import.meta.dirname, "../../contracts")
+  /** 从对应 Foundry 工程取部署字节码；Permit2 使用自己的编译配置，其他合约使用本项目配置。 */
   const bytecode = (name: string) => {
     const project = name === "Permit2" ? resolve(root, "lib/permit2") : root
     const code = execFileSync("forge", ["inspect", name, "bytecode", "--root", project], {
@@ -46,11 +47,13 @@ export async function deployPractice(url: string) {
     assert.ok(isHex(code), "Forge 必须返回合约字节码")
     return code
   }
+  /** 等本地交易成功后再进入下一步，回滚时立即终止练习而不继续使用错误状态。 */
   const mined = async (hash: Hash) => {
     const receipt = await client.waitForTransactionReceipt({ hash })
     assert.equal(receipt.status, "success")
     return receipt
   }
+  /** 部署成功还要确认回执给出合约地址，后续调用只使用这个新部署实例。 */
   const deployed = async (hash: Hash) => {
     const receipt = await mined(hash)
     assert.ok(receipt.contractAddress)

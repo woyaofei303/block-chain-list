@@ -11,6 +11,7 @@ import {
   sha256Hex,
 } from "../src/blockchain.mjs"
 
+// 固定同一笔交易的字段和时间，检查哈希可复算，不能依赖对象创建时的偶然顺序。
 test("SHA-256 和交易 ID 是确定的", () => {
   assert.equal(
     sha256Hex("blockchain"),
@@ -22,6 +23,7 @@ test("SHA-256 和交易 ID 是确定的", () => {
   )
 })
 
+// 先把交易放进内存池再挖矿，检查交易确实进入有效区块且待处理项被移走。
 test("PoW 将待处理交易打包进有效区块", () => {
   const blockchain = new Blockchain({ difficulty: 1 })
   const transaction = blockchain.createAndAddTransaction({
@@ -40,6 +42,7 @@ test("PoW 将待处理交易打包进有效区块", () => {
   assert.ok(elapsedMs >= 0)
 })
 
+// 复制已确认区块后改金额，验证哈希链会识别历史被篡改。
 test("篡改已入块交易会破坏整条链", () => {
   const blockchain = new Blockchain({ difficulty: 1 })
   blockchain.createAndAddTransaction({ from: "alice", to: "bob", amount: 10 })
@@ -51,6 +54,7 @@ test("篡改已入块交易会破坏整条链", () => {
   assert.equal(isValidChain(tampered), false)
 })
 
+// 构造更短但难度更高的链，说明选链比较的是累计工作量，而不只是区块数量。
 test("只采用累计工作量更大的有效链", () => {
   const local = new Blockchain({ difficulty: 1 })
   local.minePendingTransactions()
@@ -69,6 +73,7 @@ test("只采用累计工作量更大的有效链", () => {
   assert.equal(local.replaceChain(invalid), false)
 })
 
+// 给外部交易和区块塞入额外字段，检查接收边界不会静默忽略歧义数据。
 test("拒绝交易或普通区块中的未知字段", () => {
   const blockchain = new Blockchain({ difficulty: 1 })
   const transaction = createTransaction({ from: "alice", to: "bob", amount: 1 }, 1)
@@ -86,12 +91,14 @@ test("拒绝交易或普通区块中的未知字段", () => {
   assert.equal(blockchain.appendBlock(transactionTampered), false)
 })
 
+// 重排创世块对象的字段顺序，验证语义一致的数据不会只因 JSON 排序而被拒绝。
 test("创世块字段顺序不影响语义校验", () => {
   const reorderedGenesis = Object.fromEntries(Object.entries(GENESIS_BLOCK).reverse())
 
   assert.equal(isValidChain([reorderedGenesis]), true)
 })
 
+// 混入非法金额并重复提交同一交易，检查内存池只保留可验证的唯一记录。
 test("拒绝无效交易并对重复交易去重", () => {
   const blockchain = new Blockchain({ difficulty: 1 })
   assert.throws(
@@ -108,6 +115,7 @@ test("拒绝无效交易并对重复交易去重", () => {
   assert.equal(blockchain.addTransaction(transaction), false)
 })
 
+// 外部区块重复使用同一交易，接收时必须拒绝，不能只检查区块自身哈希。
 test("拒绝包含重复交易的外来区块", () => {
   const blockchain = new Blockchain({ difficulty: 1 })
   const transaction = createTransaction({ from: "alice", to: "bob", amount: 1 }, 1)
@@ -138,6 +146,7 @@ test("拒绝包含重复交易的外来区块", () => {
   )
 })
 
+// 向公开入口传入非预期形状的数据，检查节点返回拒绝而不是被异常击穿。
 test("公开链入口拒绝畸形区块", () => {
   const blockchain = new Blockchain({ difficulty: 1 })
 
@@ -145,6 +154,7 @@ test("公开链入口拒绝畸形区块", () => {
   assert.equal(blockchain.replaceChain([structuredClone(GENESIS_BLOCK), null]), false)
 })
 
+// 从构造和矿工输入处检查约束，确保本节点产出的块也能通过其他节点校验。
 test("创世块和矿工输入保持可验证", () => {
   assert.throws(() => GENESIS_BLOCK.transactions.push({}), TypeError)
 

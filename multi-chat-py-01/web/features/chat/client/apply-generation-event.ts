@@ -2,6 +2,7 @@
 import type { ChatMessage } from "../../../domains/conversation/model.ts"
 import type { GenerationEvent } from "../../../domains/generation/model.ts"
 
+/** 把新事件合并成新消息对象；例如事件 3 重放两次只拼接一次，避免回答文字重复。 */
 export function applyGenerationEvent(
   message: ChatMessage,
   event: GenerationEvent

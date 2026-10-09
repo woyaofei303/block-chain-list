@@ -27,11 +27,13 @@ transfer 默认只模拟和预览。--send 才会要求确认、解锁、签名�
 --max-fee-gwei 是每单位 Gas 的最高价格；预览还会显示总费用上限。
 私钥保存在 .wallet/keystore.json（加密），密码仅在交互终端隐藏输入。`
 
+/** 仅从交互终端读输入；密码模式隐藏回显，结束或中断后释放输入流。 */
 async function ask(prompt: string, hidden = false): Promise<string> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new InputError('创建钱包和发送交易需要交互终端。')
   }
   const muted = new Writable({
+    /** 密码输入的输出接到空写入器，仍调用 done 让流正常完成。 */
     write(_chunk, _encoding, done) {
       done()
     },
@@ -55,6 +57,7 @@ async function ask(prompt: string, hidden = false): Promise<string> {
   }
 }
 
+/** 按命令分流；transfer 默认到预览为止，显式 --send 且输入 SEND 后才进入签名和广播。 */
 async function main() {
   let parsed: ReturnType<typeof parseArgs>
   try {
@@ -94,6 +97,7 @@ async function main() {
   ) {
     throw new InputError('此命令包含不适用的参数，请查看 --help。')
   }
+  /** 在连接服务或读钱包前检查必填参数，缺少时给出对应选项名。 */
   const required = (name: string) => {
     const value = values[name]
     if (typeof value !== 'string' || !value)

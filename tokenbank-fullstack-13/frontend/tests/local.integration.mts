@@ -17,6 +17,7 @@ import {
 import { foundry } from "viem/chains"
 import { createBank } from "../domains/bank/client.ts"
 
+// 启动隔离 Anvil 并部署新合约，跑真实存取款；钱包适配器只注入拒签、切换等用户行为。
 test("本地链完成授权、存款、取款，并在拒签及账户切换时停止", {
   timeout: 60_000,
 }, async (t) => {
@@ -47,6 +48,7 @@ test("本地链完成授权、存款、取款，并在拒签及账户切换时�
   const wallet = createWalletClient({ transport, chain: foundry })
   const [account, other] = await wallet.getAddresses()
   const root = resolve(import.meta.dirname, "../../contracts")
+  /** 从当前本地工程读取字节码，测试不依赖共享地址或公共网络部署。 */
   function bytecode(contract: string) {
     return execFileSync("forge", ["inspect", contract, "bytecode", "--root", root], {
       cwd: root,
@@ -73,6 +75,7 @@ test("本地链完成授权、存款、取款，并在拒签及账户切换时�
   let cancelAfterBroadcast: AbortController | undefined
   let sends = 0
   const provider = {
+    /** 本地钱包边界：在转给 Anvil 前后注入账户变化或拒绝，用实际回执检查后续步骤。 */
     async request(args: { method: string; params?: unknown }) {
       if (args.method === "eth_accounts") return [selected]
       if (args.method === "eth_sendTransaction" && rejectSignature)

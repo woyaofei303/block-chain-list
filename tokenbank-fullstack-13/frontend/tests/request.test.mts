@@ -5,6 +5,7 @@ import { test } from "node:test"
 import { setTimeout as sleep } from "node:timers/promises"
 import { request } from "../shared/request.ts"
 
+// 占满共享队列再取消其中一批，确认未开始的任务不发送，其他批次仍能继续。
 test("标签页共享 6 个 HTTP 名额，终止一批不会发送其等待任务或影响其他批次", async (t) => {
   let active = 0
   let peak = 0
@@ -22,6 +23,7 @@ test("标签页共享 6 个 HTTP 名额，终止一批不会发送其等待任�
   const address = server.address()
   assert.ok(address && typeof address === "object")
   const url = `http://127.0.0.1:${address.port}`
+  /** 校验假的 HTTP 响应结构，避免请求完成却把异常数据当作成功。 */
   const parse = (value: unknown) => {
     assert.deepEqual(value, { ok: true })
     return true
@@ -40,6 +42,7 @@ test("标签页共享 6 个 HTTP 名额，终止一批不会发送其等待任�
   assert.equal(await request(`${url}/keep`, { parse }), true)
 })
 
+// 人为制造慢响应和排队，区分传输超时与等待名额，并检查取消后不再重试。
 test("在途取消和超时会中止传输；排队时间不计入超时，取消会停止重试", async (t) => {
   const { createQueryClient } = await import("../shared/query-client.ts")
   const { AppError } = await import("../shared/errors.ts")
@@ -65,6 +68,7 @@ test("在途取消和超时会中止传输；排队时间不计入超时，取�
   const address = server.address()
   assert.ok(address && typeof address === "object")
   const base = `http://127.0.0.1:${address.port}`
+  // 这里仅观察请求调度和取消，不测试响应字段，解析成功固定返回 true。
   const parse = () => true
   const occupying = Array.from({ length: 6 }, () => request(`${base}/slow`, { parse }))
   assert.equal(await request(`${base}/fast`, { parse, timeoutMs: 20 }), true)

@@ -16,6 +16,7 @@ export const operationAbi = parseAbi([
   'function permitDeposit(uint256 amount,bytes32 operationId,uint256 deadline,uint8 v,bytes32 r,bytes32 s)',
 ])
 
+/** 在扣除确认深度的区块上核对操作指纹与事件；哈希缺失或仍不确定时返回 pending，避免超时被误报为失败。 */
 export async function inspectOperation(
   rpc: PublicClient,
   operation: Operation,
@@ -41,7 +42,7 @@ export async function inspectOperation(
       '链上该操作编号的参数不一致',
     )
   if (digest === operation.payloadHash) {
-    // ponytail: 学习数据按 2000 块查询操作事件；长期大量订单应扩展现有索引器保存此事件。
+    // shortcut: 学习数据按 2000 块查询操作事件；长期大量订单应扩展现有索引器保存此事件。
     for (
       let fromBlock = BigInt(operation.startBlock);
       fromBlock <= through;

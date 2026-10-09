@@ -8,9 +8,11 @@ const token: Address = `0x${'a'.repeat(40)}`
 const alice = `0x${'1'.repeat(40)}`
 const bob = `0x${'2'.repeat(40)}`
 
+// 用假的数据库故障检查 HTTP 错误处理，不需要连接真实数据库。
 test('API 先校验参数，异步数据库错误统一返回 JSON 且不泄漏内部信息', async (t) => {
   let queries = 0
   const db = {
+    /** 故意让数据库查询失败，验证响应隐藏内部细节，并用次数检查非法参数没有触库。 */
     async query() {
       queries += 1
       throw new Error('private database connection details')

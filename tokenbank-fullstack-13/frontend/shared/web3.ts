@@ -1,9 +1,11 @@
 import { BaseError } from "viem"
 
+/** 把长地址缩短用于展示；调用合约、校验身份和生成链接仍使用完整地址。 */
 export function shortAddress(value: string) {
   return `${value.slice(0, 6)}…${value.slice(-4)}`
 }
 
+/** 给界面返回可读原因；钱包拒绝和等待超时单独说明，超时不能被解释为链上失败。 */
 export function errorMessage(error: unknown): string {
   if (error instanceof BaseError) {
     const rejected = error.walk(

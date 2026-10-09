@@ -34,6 +34,7 @@ contract Bank is IBank {
     event Deposited(address indexed depositor, uint256 amount, uint256 cumulativeAmount);
     event Withdrawn(address indexed admin, uint256 amount);
 
+    /// @dev 每次调用都按当前 admin 检查；转移管理员后，原部署者不再有提款权限。
     modifier onlyAdmin() {
         if (msg.sender != admin) {
             revert OnlyAdmin();

@@ -21,6 +21,7 @@ export const conversationKeys = {
   detail: (id: string | null) => ["conversation", id] as const,
 }
 
+/** 读取侧栏摘要并放进共享缓存，创建或改名后通过失效查询刷新排序。 */
 export function useConversationList() {
   return useQuery({
     queryKey: conversationKeys.all,
@@ -28,6 +29,7 @@ export function useConversationList() {
   })
 }
 
+/** 只在选中会话后读取详情，每个 ID 使用独立缓存，切换会话不会混合消息。 */
 export function useConversation(id: string | null) {
   return useQuery({
     queryKey: conversationKeys.detail(id),
@@ -36,6 +38,7 @@ export function useConversation(id: string | null) {
   })
 }
 
+/** 把创建、改名、删除交给服务端；成功后刷新列表，删除还要移除对应详情缓存。 */
 export function useConversationCommands() {
   const queryClient = useQueryClient()
   const createConversation = useMutation({

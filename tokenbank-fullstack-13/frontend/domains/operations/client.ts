@@ -29,9 +29,12 @@ export type Intent = {
 // 每个账户/网络/银行保存一笔待处理操作，防止切换钱包后把旧意图带到另一作用域。
 export const intentKey = (account: string, chainId: number, bank: string) =>
   `tokenbank:operation:${chainId}:${bank.toLowerCase()}:${account.toLowerCase()}`
+/** 为一笔新意图生成随机编号；恢复和重试必须沿用已保存的编号，不能每次点击都另造一笔。 */
 export const newOperationId = () => bytesToHex(crypto.getRandomValues(new Uint8Array(32)))
+/** 检查本地记录或服务端返回的哈希格式；真实链上状态另行查询。 */
 const isHash = (value: unknown): value is Hash =>
   typeof value === "string" && /^0x[0-9a-f]{64}$/i.test(value)
+/** 把外部 JSON 限定为对象，具体身份、金额和状态仍由调用方逐项核对。 */
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("服务端返回无效数据")
@@ -66,6 +69,7 @@ export function restoreIntent(
     throw new Error("本地操作记录无效，请保留记录并核对钱包，暂不创建新操作")
   return data as Intent
 }
+/** 按账户、网络和银行保存恢复记录；写入失败必须向上传递，不能在无法留存记录时继续交易。 */
 export function saveIntent(storage: Pick<Storage, "setItem">, intent: Intent) {
   storage.setItem(
     intentKey(intent.account, intent.chainId, intent.bankAddress),
@@ -85,6 +89,7 @@ export function clearConfirmedIntent(
 }
 // SIWE 签名只证明登录身份；ERC20 approve 和银行存取款是后面独立的链上交易。
 async function authenticate(provider: EIP1193Provider, intent: Intent, signal: AbortSignal) {
+  /** 校验登录响应的地址和链 ID 类型，随后再与当前意图比较，避免复用另一钱包的会话。 */
   const parseSession = (data: unknown) => {
     const value = record(data)
     if (
@@ -141,6 +146,7 @@ async function authenticate(provider: EIP1193Provider, intent: Intent, signal: A
   if (session.address !== intent.account || session.chainId !== intent.chainId)
     throw new Error("钱包登录身份不匹配")
 }
+/** 检查后端记录确实属于当前意图，并校验状态与哈希，防止旧响应推进另一笔操作。 */
 function parseOperation(data: unknown, intent: Intent) {
   const value = record(data)
   for (const key of [
@@ -190,17 +196,22 @@ export async function executeIntent(
 ) {
   const { provider, signal, isCurrent, persist, progress } = options
   let current = { ...intent }
+  /** 先合并进度并持久化，再让流程往下走；即使用户刚取消，也要留住钱包晚返回的哈希。 */
   const save = (patch: Partial<Intent>) => {
     current = { ...current, ...patch }
     persist(current)
   }
+  /** 每个异步步骤后检查取消和钱包会话，防止切换账户后继续旧流程。 */
   const check = () => {
     signal.throwIfAborted()
     if (!isCurrent()) throw new DOMException("钱包会话已变化", "AbortError")
   }
   const api = `/api/backend/operations/${intent.operationId}`
+  /** 给所有操作查询复用同一套校验，始终以最初的意图为比较基准。 */
   const parse = (data: unknown) => parseOperation(data, intent)
+  /** 只向后端核实当前操作，不因一次查询而再次弹出交易签名。 */
   const inspect = () => request(api, { signal, parse })
+  /** 上报已获得的哈希供服务端核实；收到 recorded 只表示线索已保存。 */
   const register = (hash: Hash) =>
     request(`${api}/transactions`, {
       method: "POST",

@@ -6,6 +6,7 @@ export const runtime = "nodejs"
 
 type Context = { params: Promise<{ id: string }> }
 
+/** 读取指定会话，缺失时返回 404；这里读的是已保存历史，不建立模型连接。 */
 export async function GET(_request: Request, context: Context) {
   try {
     const { id } = await context.params
@@ -17,6 +18,7 @@ export async function GET(_request: Request, context: Context) {
   }
 }
 
+/** 只接收字符串标题，再交给仓库检查长度并保存；失败返回统一错误。 */
 export async function PATCH(request: Request, context: Context) {
   try {
     const { id } = await context.params
@@ -30,6 +32,7 @@ export async function PATCH(request: Request, context: Context) {
   }
 }
 
+/** 经用例服务停止生成并删除历史，完成后返回无正文的 204。 */
 export async function DELETE(_request: Request, context: Context) {
   try {
     const { id } = await context.params

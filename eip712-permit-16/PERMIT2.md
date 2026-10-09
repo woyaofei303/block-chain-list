@@ -1,6 +1,16 @@
-# Permit2：复用银行、签名存款与完整本地流程
+# Permit2：先授权一个中间合约，再签本次转账许可
 
-在第 16 题原银行和前端中增加 `depositWithPermit2()`，普通存款、EIP-2612 Permit、提款、NFT、登录、账本、索引和恢复继续使用原实现。无需另建一套 TokenBank。
+先完成 [README](README.md) 的普通/Permit 存款，再读本篇。Permit2 让不支持 EIP-2612 的普通 ERC20 也能使用签名许可，但前提是 Token 已授权 Permit2 转币。
+
+## 用两次 10 JUL 存款算交易数
+
+假设 Alice 对 Permit2 的额度为 0。第一次存 10：先 approve Permit2 10，再签一次性许可并发存款交易，共两笔。存完这 10 的额度已用掉，第二次再存 10 仍需补额度。
+
+若 Alice 之前已有足够额度，才可直接签名并用一笔交易存入。本页面只补当前金额，不自动授予无限额度，因此“一笔存款”是有条件的。
+
+Permit2 像中间的扣款执行人，银行仍负责个人账本。Token 授权给 Permit2；签名中的 spender 则指定银行。两处地址用途不同，不能都填成银行。
+
+本篇依次解释域和 nonce、自动测试、新建本地环境、页面与 CLI 操作。文末记录属于历史版本，本次文档重构未重新运行。
 
 ## 原理与交易次数
 
@@ -30,7 +40,7 @@ depositWithPermit2(uint256 amount, bytes32 operationId, uint256 deadline, bytes 
 所有命令从本项目目录执行。安装使用原有包管理器及锁文件；首次编译需要下载 Solidity 0.8.17。后端集成需要本机 PostgreSQL，使用随机临时 schema，不改已有业务库。
 
 ```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+cd "$(git rev-parse --show-toplevel)/eip712-permit-16"
 pnpm --dir frontend install --frozen-lockfile
 npm --prefix backend ci
 forge build --root contracts/lib/permit2
@@ -58,7 +68,7 @@ PGHOST=127.0.0.1 PGDATABASE=postgres TEST_PERMIT2=1 npm --prefix backend run tes
 终端 A：先检查端口；发现占用时先核对该服务，不重复启动。
 
 ```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+cd "$(git rev-parse --show-toplevel)/eip712-permit-16"
 lsof -nP -iTCP:8548 -iTCP:13018 -iTCP:3018 -sTCP:LISTEN
 export PRACTICE_RUN="$(git rev-parse --show-toplevel)/output-tdd/permit2/demo"
 mkdir -p "$PRACTICE_RUN"
@@ -69,7 +79,7 @@ anvil --host 127.0.0.1 --port 8548 --chain-id 31337 --silent \
 终端 B：只在首次部署。脚本依次部署 JUL、官方 Permit2、银行、NFT 和市场，并给第二个模拟账户 1000 JUL。JSON 文件存在时跳过，防止重复部署；中断或 JSON 不完整时先查交易，不删文件盲目重试。
 
 ```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+cd "$(git rev-parse --show-toplevel)/eip712-permit-16"
 export PRACTICE_RUN="$(git rev-parse --show-toplevel)/output-tdd/permit2/demo"
 if [ ! -e "$PRACTICE_RUN/deployment.json" ]; then
   node frontend/scripts/permit-setup.mts http://127.0.0.1:8548 > "$PRACTICE_RUN/deployment.json"
@@ -123,7 +133,7 @@ cast code "$PERMIT2_ADDRESS" --rpc-url "$RPC_URL"
 终端 C：以下 `createdb` 只在首次执行。恢复时沿用同一数据库，不清空原库。
 
 ```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+cd "$(git rev-parse --show-toplevel)/eip712-permit-16"
 set -a
 source ../output-tdd/permit2/demo/session.env
 set +a
@@ -134,7 +144,7 @@ env -u DATABASE_URL -u PGOPTIONS node backend/src/main.ts
 终端 D：若本目录已有 Next 服务，先在其原终端用 Ctrl+C 停止，再启动本轮页面。不要在同一目录同时启动两个 Next 服务或构建。
 
 ```bash
-cd /Users/julian/Documents/Codex/2026-09-03/block-chain-list/eip712-permit-16
+cd "$(git rev-parse --show-toplevel)/eip712-permit-16"
 set -a
 source ../output-tdd/permit2/demo/session.env
 set +a
@@ -204,7 +214,7 @@ cast call "$BANK_ADDRESS" 'balances(address)(uint256)' "$BUYER" --rpc-url "$RPC_
 
 恢复时重新启动终端 A，加载同一 state 文件，其余终端加载同一 `session.env`，跳过部署、充值和建库。保留同一 Token、银行、Permit2、数据库。只恢复地址文件不能恢复链上资产。
 
-## 本次实测记录
+## 历史实测记录
 
 2026-09-23，本地 EVM / Anvil、Node 24、PostgreSQL：26 项合约测试（两项 fuzz 各 256 次）、前端 12 项单元测试与普通/Permit/Permit2 三种 RPC 集成、后端 4 项测试与三种授权模式的全栈集成全部通过。前后端 lint、格式、类型检查通过；[生产构建](../output-tdd/permit2/build.log) 在隔离副本完成，浏览器验证了三种授权选项、存取切换，控制台无错误；未在真实钱包扩展中点击签名。
 

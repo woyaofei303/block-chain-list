@@ -1,62 +1,45 @@
-# Solidity 链表 Bank：累计存款前 10 名
+# 19 · 用链表维护存款前十名
 
-题目来源：本次「用 Solidity 实现一个链表」第 1 题。实现钱包直接向 Bank 地址存入 ETH、记录每个地址的累计金额，并用可迭代链表保存前 10 名。
+[05](../bank-05/README.md) 用数组维护前三名；这里改用单链表维护前十名。学习目标是看懂“每个节点记住下一个节点”，以及追加存款后如何移动名次。
 
-题面提到之前的 TokenBank 前三名；仓库中对应实现实际是 [ETH Bank](../bank-05/contracts/Bank.sol)，所以本题按直接转 ETH 的要求实现，不涉及 ERC20 的 approve / transferFrom。旧项目保持原样，新练习独立放在本目录。
+接收的是 ETH，不需要 ERC20 approve。`deposits` 仍是历史累计金额，只有管理员可以统一提款，普通用户没有个人提款接口。
 
-## 实现范围与阅读顺序
+## 用三个人理解链表
 
-1. [项目规则](AGENTS.md)。
-2. [src/Bank.sol](src/Bank.sol)：两个存款入口、单链表维护、查询和管理员提款。
-3. [test/Bank.t.sol](test/Bank.t.sol)：存款、排名边界、提款失败及随机序列测试。
-4. [script/DeployBank.s.sol](script/DeployBank.s.sol)：用 `forge script` 模拟或部署。
-5. [foundry.toml](foundry.toml)：Solidity `0.8.24`、Shanghai、优化器 200 次。
-
-前三项题面功能均在一个合约内完成。实现选择：沿用旧 Bank 的管理员统一提款功能；按**历史累计存款**排名，提款不会降低累计值或清空榜单。普通用户没有个人提款接口，`deposits` 不是个人可提余额。
-
-## 链表如何保存和更新前 10 名
+Alice 8 ETH、Bob 5 ETH、Carol 2 ETH，排行榜可以存成：
 
 ```text
-deposits[地址] = 累计存款金额（Wei）
-next[地址]     = 下一位用户的地址
-size           = 当前榜单人数，0～10
-
-next[0] → Alice(8 ETH) → Bob(5 ETH) → Carol(2 ETH) → 0
-           第一名          第二名        尾节点
+next[零地址] → Alice → Bob → Carol → 零地址
 ```
 
-`address(0)` 是哨兵和结束标记，不是用户。`mapping` 本身不可枚举；从 `next(address(0))` 开始反复查询 `next(当前地址)`，便能按名次迭代，遇到零地址结束。
+`next[Alice]=Bob` 表示 Alice 后面是 Bob。零地址既是起点标记，也表示结束，不是参赛用户。mapping 本来不能直接遍历，但按 next 一路走，就能读出有序名单。
 
-一笔存款的调用顺序：
+Carol 再存 4 ETH 后累计 6，应变成 `Alice → Carol → Bob`。需要先断开 Carol 的旧位置，再接到 Alice 后面；若只插入不摘下，可能出现重复节点或环。
+
+## 满十名之后如何处理
+
+榜外的 Dave 若正好和第十名同额，不挤榜；严格超过才进入。淘汰只移除节点，Dave 或旧第十名的历史存款仍保存，之后追加可能重新入榜。
+
+管理员提走全部实际 ETH 后，榜单和历史累计不变。例如榜单累计一共 100 ETH，银行现在可以是 0；累计金额不是提款承诺。
+
+## 对照源码走一次存款
 
 ```text
-钱包直接转 ETH → receive() ─┐
-显式调用 deposit() ────────┴→ _deposit() → _updateTop10(存款人)
+直接转 ETH → receive ─┐
+调用 deposit ──────────┴→ _deposit → 累加 deposits → _updateTop10
 ```
 
-更新时先校验金额大于零，再增加 `deposits[msg.sender]`，最后执行：
+[Bank.sol](src/Bank.sol) 从头找新位置，先跳过大于或等于当前金额的成员，同额排在已有成员后。如果先遇到自己，说明名次没变，只记存款即可。需要移动时，再查原节点或尾部并调整链接。
 
-1. 从头寻找插入位置，跳过金额大于或等于该用户的节点；同额已有成员保持在前。若先遇到自己，名次不变，直接结束，不改链接和人数。
-2. 若走到链尾仍没遇到自己，则是榜外用户。榜未满时追加到末尾，榜已满时不入榜。
-3. 若找到可前插的位置，从该位置继续寻找原节点或尾节点。榜内用户只断开旧前驱后再插入，人数不变。
-4. 榜外入榜时，未满才增加人数；已满直接淘汰尾节点。仅替换第 10 名时只改其前驱。尾节点和榜外用户的后继原本就是零，无需重复清零。
+排行榜最多十个节点，所以扫描成本受十人限制，不会随着所有历史存款人数无限增长。`getTop10()` 返回的数组只是查询时临时生成，持久保存的仍是 next 链表。
 
-每笔存款最多扫描 10 个已有节点，各节点不重复遍历，时间复杂度 `O(10)`，不随总存款人数增加。淘汰只断开链接，累计存款保留。只有当前存款人的金额增加，因此不必为榜外所有人维护链表。持久化排行榜使用 `next` 映射；`getTop10()` 返回的数组只是沿链表生成的内存查询结果。
+`next(某地址)=0` 不足以证明它不在榜：尾节点也指向零。判断成员必须从起点遍历。`size` 表示当前上榜人数，不是全部存款人数。
 
-主要接口：
+## 如何边跑边学
 
-```solidity
-receive() external payable;
-function deposit() external payable;
-function deposits(address user) external view returns (uint256);
-function next(address user) external view returns (address);
-function size() external view returns (uint256);
-function getTop10() external view returns (address[] memory accounts, uint256[] memory amounts);
-function admin() external view returns (address);
-function withdraw() external;
-```
+先执行下方测试，再做本地部署，最后才看 Gas 对比。重点观察 Carol 从 2 变 6 时的完整链接，以及提款后哪些状态变、哪些不变。[测试](test/Bank.t.sol) 还用随机存款顺序与独立排序结果比较，防止只在手工例子里正确。
 
-`getTop10()` 返回实际人数，空榜返回空数组。榜外地址的 `next` 为零，尾节点也一样；判断成员身份需从哨兵遍历，不能只检查某地址的 `next` 是否为零。所有金额均以 Wei 保存，`1 ETH = 10^18 Wei`。
+下面操作保留具体地址获取和核验命令；历史优化数据单独标日期。2026-10-09 已通过 11 项 Forge 测试；未重跑部署和历史 Gas 对比实验。
 
 ## 安装与测试
 
@@ -210,7 +193,7 @@ cast call "$BANK_ADDRESS" 'deposits(address)(uint256)' "$BANK_ALICE" --rpc-url "
 
 “落榜回榜”先由榜外用户存入 15 ETH 淘汰第十名，再单独测量原第十名追加 6 ETH 的交易。金额仅为模拟数据。部署增加 `15,353 Gas`（`2.55%`），换取后续存款更低的开销；例如两次第一名不换位的追加存款共节省 `18,866 Gas`，已超过这笔部署差额。表中结论限于所测场景和编译设置，不代表所有输入都节省相同比例。
 
-本次验证：11 项测试全部通过，随机测试扩展至 `1,024` 轮（`32,768` 笔存款）；新增存储写入回归测试在原实现上失败、优化后通过。两版部署和表中场景均在本地执行，原始脚本、回执 Gas 摘要与日志保存在仓库忽略目录 `output-tdd/linked-list-bank-gas/`，测试节点已关闭。未执行公共链操作。
+该轮历史验证：11 项测试全部通过，随机测试扩展至 `1,024` 轮（`32,768` 笔存款）；新增存储写入回归测试在原实现上失败、优化后通过。两版部署和表中场景均在本地执行，原始脚本、回执 Gas 摘要与日志保存在仓库忽略目录 `output-tdd/linked-list-bank-gas/`，测试节点已关闭。未执行公共链操作。
 
 从**项目目录**复验行为与存储写入约束：
 
@@ -232,4 +215,4 @@ forge test --match-test testUnchangedRankOnlyWritesDeposit -vv
 
 对本题而言，新增接口、前驱验证、链下调用和提示失效重试的复杂度不值得保留，因此恢复第一轮版本。以后若确有大量适合提示的调用，再按实际交易分布、部署及失败费用重新评估。第一轮已获得的减少遍历、无效链接写入和人数写入的收益继续保留。
 
-对比数据与撤回前源码保存在本地忽略目录 `output-tdd/linked-list-bank-selective/`，不包含在交付源码中。本次撤回后重新执行格式、构建及测试；未重新广播合约，也未执行公共链操作。
+对比数据与撤回前源码保存在本地忽略目录 `output-tdd/linked-list-bank-selective/`，不包含在交付源码中。该轮撤回后重新执行格式、构建及测试；未重新广播合约，也未执行公共链操作。

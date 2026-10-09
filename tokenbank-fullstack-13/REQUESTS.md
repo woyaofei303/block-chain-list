@@ -1,120 +1,90 @@
-# 请求、错误提示与幂等存取款
+# 请求与恢复：页面断线后，怎样避免再扣一次钱
 
-本次实现沿用 TypeScript、TanStack Query v5、Viem、Express 和 PostgreSQL，仅新增 `p-queue` 与 Sonner。先读 [AGENTS.md](AGENTS.md)，运行流程见 [WALKTHROUGH.md](WALKTHROUGH.md)。
+先完成 [README](README.md) 的一次存款。本篇只追一个问题：Alice 存 10，钱包已经发出交易，页面却超时了。应该怎么恢复，才能既不漏报成功，也不重复存入？
 
-## 1. 阅读与调用顺序
+## 1. 一开始就给操作编号
 
-建议按一次页面操作的顺序阅读；源码中的中文注释标明状态归属、跨模块入口和不能合并的阶段。
+点击提交后，页面生成非零 bytes32 的 `operationId`，在请求钱包前保存到 localStorage。它和网络、银行、账户、金额、动作一起构成一笔业务意图。
 
-1. [app/page.tsx](frontend/app/page.tsx) → [bank-dashboard.tsx](frontend/features/bank-dashboard.tsx) → [bank-workspace.tsx](frontend/features/bank-workspace.tsx)：页面组合、会话切换、查询、同步提交锁与终止入口。[providers.tsx](frontend/app/providers.tsx) 为页面提供稳定的 QueryClient 和全局 Toast。
-2. [bank/client.ts](frontend/domains/bank/client.ts) 的 `read` / `parseAmount`：从合约读取三种余额和精度，再校验用户输入。金额、余额、设置和操作提示组件只接收属性与回调；设置弹窗另有自己的草稿。
-3. 工作区 `submit` → [operations/client.ts](frontend/domains/operations/client.ts) 的 `executeIntent`：先保存意图，再登录、创建/复用操作、核实结果。需要继续链上执行时调用 `bank/client.ts` 的 `transact`，随后登记哈希并再次核实。
-4. [request.ts](frontend/shared/request.ts) → [同源操作路由](frontend/app/api/backend/[...path]/route.ts) → [proxy.ts](frontend/shared/proxy.ts) → [后端 router.ts](backend/src/operations/router.ts)：HTTP 排队、超时和取消贯穿请求；代理转交会话与幂等键，后端验证身份和输入。[repository.ts](backend/src/operations/repository.ts) 管理数据库唯一约束与事务。
-5. 钱包调用 [IdempotentTokenBank.sol](contracts/src/IdempotentTokenBank.sol)；后端 [chain.ts](backend/src/operations/chain.ts) 核实操作标记、事件和规范回执。同账户、同操作编号最多一次资金效果；前端不能仅凭哈希登记成功就显示业务成功。旧 `TokenBank.sol` 与历史部署保留，不能原地升级。
-6. 工作区 `onSuccess` 清除本笔已确认的恢复记录、清空金额并恢复表单，保留金额与交易哈希的成功提示，同时刷新余额和记录；[transfer-history.tsx](frontend/domains/transfers/transfer-history.tsx) → [queries.ts](frontend/domains/transfers/queries.ts) → [transfers/client.ts](frontend/domains/transfers/client.ts) 查询索引结果并校验身份。键包含网络、Token、账户、精度、分页；历史记录可能晚于链上余额更新。
-7. 查询或提交的最终失败 → [query-client.ts](frontend/shared/query-client.ts) → [error-queue.ts](frontend/shared/error-queue.ts) → [error-toaster.tsx](frontend/shared/error-toaster.tsx)：缓存层报告错误，队列合并、排序、抑制，Sonner 显示一条。组件保留行内错误，不重复弹提示。
+同一编号贯穿浏览器、HTTP 的 Idempotency-Key、数据库唯一键和银行函数。Alice 刷新后继续这笔 10，必须复用原编号。只有确认完成后再发起新的一笔，才生成新编号。
 
-阅读恢复逻辑时，重点对照工作区的 `run` / `stop` 与 `executeIntent` 的 `send` / `check` / `save`：`send=false` 只核实业务结果，必要时仍需登录、创建/复用记录或登记已知哈希；`send=true` 才允许继续授权和存取款步骤。两者复用原编号。`check` 阻止终止后的下一步，`save` 保留晚返回的哈希；浏览器终止不能撤销已经提交的链上交易。
+这叫**幂等**：相同业务重复请求，资金效果最多一次。例如原编号 A 已存 10，再存相同 A 和 10 不重复扣款；拿 A 改存 20 则冲突。它不是把所有“金额相同”的不同存款都合并。
 
-没有新增通用 useRequest、订单框架、队列服务或跨项目依赖。当前业务只有 TokenBank，HTTP 下单场景应复用“业务写入与幂等结果同事务提交”的模式；不要把链上确认误当作可与 PostgreSQL 原子提交的本地写入。
+## 2. 登录、授权、业务交易分别证明什么
 
-## 2. HTTP 并发与取消
+SIWE 登录用钱包签名证明“我控制这个地址”。后端核对一次性 nonce、签名地址、域名、URI、链和时间，消费 nonce 后建立 12 小时会话；它不授权代币，也不扣款。
 
-每个标签页一个 PQueue，接入 request 的 HTTP 同时最多 6 个。名额覆盖 fetch 和完整响应读取；每次重试重新排队。只在实际发送时启动 10 秒超时，排队与重试退避不占用超时预算。网络故障、超时、5xx、429 的查询最多重试一次，写入不自动重试。
+服务端会话采用 HttpOnly、SameSite=Strict，HTTPS 下加 Secure，写接口检查 Origin 和 JSON 类型。身份只取已验证会话，不能相信客户端随意提交的账户字段。
 
-钱包扩展管理自己的 RPC 与签名窗口，应用无法限制扩展内部传输；钱包签名不进入 HTTP 队列。应用取消信号会阻止后续钱包 RPC 和依赖步骤，但不能关闭扩展已经打开的签名窗口。首版只限制应用标签页内接入 request 的 HTTP，不限制其他标签页或后端集群。
+授权允许银行使用 Token；业务交易才改变个人账本。授权成功但用户拒绝存款，不应显示存入成功。授权、链上交易和数据库更新也不能组成一个跨系统原子事务。
 
-多个接口可共享一个批次的信号，部分成功不丢失：
-
-```ts
-const controller = new AbortController()
-const results = await Promise.allSettled(
-  accounts.map((account) =>
-    loadTransfers("/api/transfers", { chainId, token, account, decimals }, 0, controller.signal)
-  )
-)
-// 用户终止时调用 controller.abort()，不要清空共享队列。
-```
-
-普通查询由 queryFn 消费 TanStack Query 的 signal。页面“终止请求”还会禁用本工作区查询，阻止重新聚焦、重新联网和 15 秒轮询重新发起；其他工作区/批次的排队任务不受影响。批量终止的 Promise 会以拒绝结束，可以由 allSettled 收集。
-
-已提交到数据库或广播到链上的业务不会被 AbortController 撤销。每个后续异步步骤检查终止状态；钱包晚返回交易哈希时仅保存，停止后续登记、查询和存款。只有点击“核实结果”“使用原操作继续”或“恢复查询”才重新开始。
-
-## 3. 最多三条错误提示
-
-- 容量 3 包含当前显示与等待项；同屏只有 1 条。
-- 相同业务码与规范化文案合并计数，忽略请求编号。重复不会改变首次排序，也不会延长原先的 5 秒期限。
-- 当前提示不被抢占。等待项按严重等级降序、首次到达顺序排列；满额时，更严重的新错误替换最低等级中最后到达的等待项，同级保留先到者。
-- 普通查询错误约 5 秒自动消失；认证失效、写入失败、结果待核实需手动关闭。关闭只推进一次，不清除操作记录。
-- 关闭、丢弃或替换后的同类后台故障不反复弹出。对应请求恢复后可以再次提示；无关请求成功不能重置。用户主动新操作允许重新提示。
-- 主动取消和钱包拒签不进入 Toast 队列，页面仍说明状态。
-
-队列自身维护截止时间，Sonner 使用无限 duration 和关闭回调展示；这样更新次数不会触发 Sonner 重新计时。
-
-## 4. 操作编号、登录与 API
-
-首次提交生成随机非零 `bytes32 operationId`，在钱包请求前保存至 localStorage。作用域是网络、银行和账户；保存金额（展示文本和精确最小单位）、授权哈希、业务哈希、阶段。刷新或拒签后只恢复该操作，点击“使用原操作继续”仍用原编号。本次后端核实成功后，自动清除这笔恢复记录、清空金额并显示存入/取出成功，无需点击“新的一笔”；用户再次输入并提交时才生成新编号。输入或切换存取款会收起上一笔的成功提示。待核实、失败、终止或损坏的记录仍保留，不能为解锁表单而丢弃；旧版本留下的已确认记录也先核实，再自动收起。
-
-首次提交需要一次 SIWE 登录签名，不扣款、不进行代币授权。服务端验证一次性 nonce、签名钱包、域名、URI、链、签发时间和有效期，事务内消费 nonce，创建 12 小时 HttpOnly / SameSite=Strict 会话。HTTPS 环境设置 Secure；写接口同时检查 Origin 和 JSON 类型。签名、Cookie 和数据库凭据不得写入日志。
+## 3. 从一次点击到确认的顺序
 
 ```text
-POST /auth/challenge                 { address }
-POST /auth/verify                    { message, signature }
+bank-workspace.submit → 保存本地意图
+operations.executeIntent → 登录 → POST /operations 登记/复用
+核实原编号 → 如未完成且允许继续，调用 bank.transact
+保存钱包返回的哈希 → 登记线索 → 后端重新核实链
+确认成功 → 收起该笔恢复记录 → 刷新余额与历史
+```
+
+代码入口：[工作区](frontend/features/bank-workspace.tsx)、[操作编排](frontend/domains/operations/client.ts)、[钱包客户端](frontend/domains/bank/client.ts)、[后端核实](backend/src/operations/chain.ts)。先按这四处走一遍，再深入队列。
+
+## 4. 拿到交易哈希为什么还不能直接成功
+
+哈希只是线索。后端每次查询都重新检查确认深度内的 `operationHash`、`OperationExecuted`、交易输入和规范回执，核对账户、银行、动作及精确金额。
+
+“规范链”是当前被节点认可的那条链；发生重组时，旧成功回执可能不再属于它。数据库的旧 confirmed 只作历史，不作为以后永久成功的保证。
+
+若链已完成但浏览器丢了哈希，仍能按操作编号找事件。若未打包、证据不足或重组中，保持 pending；已知失败也需要回执与输入匹配。不能把“RPC 没查到”直接解释为“没有发送”。
+
+## 5. 取消、刷新、继续分别做什么
+
+**取消**：AbortController 停止应用等待，阻止下一步授权/存款和自动刷新；不能撤销链上交易，也不能强行关掉已打开的钱包窗口。
+
+**晚返回**：用户取消后，钱包仍可能返回交易哈希。程序先保存这个哈希，再停止后续登记和轮询，保留恢复线索。
+
+**核实结果**：以 `send=false` 运行，只核实业务；必要时仍可能登录、登记原记录或保存已知哈希，但不发送新的资金交易。
+
+**使用原操作继续**：以 `send=true` 恢复原编号，检查已有交易后才允许继续依赖步骤。已知业务哈希还在等打包时，不自动发一笔替代交易。
+
+切换账户、银行或网络会改变作用域。旧操作不能在新账户下继续执行；损坏或待核实记录也不能为了让按钮解锁而直接丢弃。清空浏览器存储不意味着链上操作消失。
+
+## 6. HTTP 排队与错误提示
+
+每个标签页通过 `shared/request.ts` 的 HTTP 同时最多 6 个，名额覆盖 fetch 和完整响应读取。排队时不计超时，实际发送才开始 10 秒预算。查询的临时网络、429、5xx 等最多重试一次，写入不自动重试。
+
+钱包扩展有自己的 RPC 和签名窗口，不受这 6 个名额控制；其他标签页也不共享该队列。停止一个工作区不清空别人的请求。
+
+终止后本工作区暂停查询，重新聚焦、联网或定时轮询不会偷偷恢复。只有用户选择恢复查询、核实或继续才重新开始。
+
+错误进入 [error-queue.ts](frontend/shared/error-queue.ts)：当前显示加等待最多 3 条，同屏 1 条。相同故障合并计数，不因反复出现延长原期限；普通查询约 5 秒消失，认证/写入/结果不明需要手动关闭。
+
+等待项按严重程度排序，当前提示不被抢占；队满时更严重的项可替换低等级等待项。关闭提示不删除业务记录。故障需对应请求恢复后才重新开放提示，主动取消和钱包拒签保留行内状态，不重复弹窗。
+
+## 7. API 和数据库怎样保证同一笔
+
+浏览器经过 Next.js 同源 `/api/backend/...` 访问：
+
+```text
+POST /auth/challenge
+POST /auth/verify
 GET  /auth/session
-POST /operations                    Idempotency-Key: 0x…（64 个十六进制字符）
+POST /operations
 GET  /operations/:operationId
-POST /operations/:operationId/transactions   { transactionHash }
+POST /operations/:operationId/transactions
 ```
 
-前端通过同源 `/api/backend/...` 访问这些接口，浏览器自动携带会话。创建操作的请求体示例：
+创建操作时 Idempotency-Key 是 `0x` 加 64 位十六进制字符，正文为网络、银行、动作与 amountRaw 字符串。账户从会话取。详细字段见 [router.ts](backend/src/operations/router.ts)。
 
-```json
-{
-  "chainId": 31337,
-  "bankAddress": "0x填写本轮幂等银行地址",
-  "action": "deposit",
-  "amountRaw": "1000000000000000000"
-}
-```
+数据库 `(account, operation_id)` 唯一，同参数复用，冲突报 409；同操作哈希去重，每操作最多保存 16 条线索，行锁防止并发绕过限制。SQL 在 [repository.ts](backend/src/operations/repository.ts)。
 
-身份只取会话。`operations` 使用 `(account, operation_id)` 唯一键；同参数返回同一条记录，金额、动作、网络或银行冲突返回 409。数据库保存规范化参数、摘要、起始区块和最近核实的状态/哈希/时间；服务重启后仍可恢复。`operation_transactions` 对同一操作和哈希去重，每操作最多 16 条线索，行锁防止并发突破上限。
+银行先写操作标记再外部转币，失败则标记和转币一起回滚，原编号可重试。新合约没有不带编号的写入口；旧 TokenBank 保留，不原地升级。
 
-创建/登记成功不代表链上成功。保存的核实结果只作历史记录，GET 每次重新读取确认深度内的 operationHash 和 OperationExecuted 事件，核对账户、银行、动作与精确金额，查询前后检查规范区块。已知回滚还需核对交易输入和规范回执；未知/未打包/重组中的线索保持 pending。链已完成但客户端丢失哈希时，仍可由操作编号找到原始事件。
+## 8. 配置、测试与边界
 
-## 5. 合约与恢复边界
+`BANK_ADDRESS` 必须与前端 `NEXT_PUBLIC_BANK_ADDRESS` 一致；`PUBLIC_ORIGIN` 与浏览器实际地址完全一致。银行配置留空时，后端只提供原只读索引功能。完整运行顺序见 [WALKTHROUGH](WALKTHROUGH.md)。
 
-```solidity
-function deposit(uint256 amount, bytes32 operationId) external;
-function withdraw(uint256 amount, bytes32 operationId) external;
-function operationHash(address user, bytes32 operationId) external view returns (bytes32);
-```
+验证应分别覆盖：HTTP 并发/取消、提示去重、数据库并发冲突、SIWE 重放拒绝、合约同编号只扣一次、转账失败回滚、哈希丢失与重组后重新核实。检查命令见 [项目规则](AGENTS.md)，本次文档重构未重新执行。
 
-摘要是 `keccak256(abi.encode(isDeposit, amount))`。同账户、同编号、同参数重放直接返回，不再次转币或产生业务事件；不同参数回滚。标记先于外部转币写入，资金转移失败时整笔交易回滚，原编号可重试；重入保护覆盖两个入口。新合约没有不带编号的入口。只适用于本项目标准 BaseERC20，不额外支持扣税、重基准等特殊代币。
-
-授权、业务交易和索引更新分开。授权成功不会显示存款成功。已知业务哈希仍待打包时继续等待原交易，避免自动发出替代交易；等待超时保留待核实。替换、取消、掉入孤块等复杂钱包状态需要再次核实原操作与钱包记录，页面不会自动加价替换或创建另一笔业务。
-
-首版事件证据按 2000 块分段扫描，只适合学习规模。长历史应把 OperationExecuted 接入现有索引器并保留重组检查。幂等编号不自动过期；认证 nonce/会话过期清理不删除业务操作。清空浏览器存储会失去本地恢复入口，后端仍保留操作记录，不能因此认定交易未发生。
-
-## 6. 配置与运行
-
-新环境完整步骤见 WALKTHROUGH 第 1～7 节，部署目标已经改为 IdempotentTokenBank。后端新增配置：
-
-```dotenv
-BANK_ADDRESS=本轮部署的幂等银行地址
-PUBLIC_ORIGIN=http://127.0.0.1:3181
-```
-
-PUBLIC_ORIGIN 必须和实际浏览器地址完全相同；`localhost` 与 `127.0.0.1` 不等价。启动时验证 RPC 网络、银行 token() 和幂等查询接口。BANK_ADDRESS 留空时仍是原只读索引服务，新提交接口不可用。前端 NEXT_PUBLIC_BANK_ADDRESS 和后端 BANK_ADDRESS 必须一致。
-
-本次没有迁移 `18545 / 13001 / 3180` 旧环境中的余额或数据。新版本源码要在独立环境部署/构建；已有前端进程使用旧构建，不能以运行中的旧页面代表新功能。不要一边运行同目录服务一边构建。
-
-## 7. 验证
-
-从项目根目录运行 AGENTS.md 中的检查命令。测试使用随机 PostgreSQL schema 与独立 Anvil，自动清理，仅使用本地解锁测试账户，不读取私钥。
-
-- Node 单元测试：6 个 HTTP 名额、等待任务零发送、在途取消、超时预算、缓存复用、取消重试、重试一次；队列合并、上限、优先级、幂等关闭、故障恢复；本地操作恢复和作用域隔离。
-- PostgreSQL 与 HTTP：并发重放只产生一条操作、409 冲突、重启恢复、SIWE 真实签名、nonce 重放拒绝、会话身份、Origin 拒绝、交易登记去重。
-- Forge：相同编号资金效果一次、动作/金额冲突、失败回滚可重试、没有旧入口、重入拒绝及提款转币失败恢复账本。
-- 本地集成：精确金额存取款、拒签、账户切换、授权后终止并保存晚返回哈希；丢失哈希仍可核实，规范链回滚后不保持已确认。
-
-浏览器证据与本轮检查记录保存在仓库 `output-tdd/playwright/tokenbank-request-management/` 和 `output-tdd/tokenbank-request-management/`。这些是本地运行产物，不纳入提交。
+当前按 2,000 块分段查业务事件，适合练习规模；长历史需更完整索引支持。操作编号不自动过期，登录会话过期不会删除业务记录。只适配本项目无手续费、无 rebase 的 Token。

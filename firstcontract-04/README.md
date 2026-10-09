@@ -1,50 +1,44 @@
-# First Contract：Counter
+# 04 · 第一个合约：把数字从 0 加到 5
 
-对应截图练习：准备测试钱包和测试币、转账一次、用 Remix 部署 Counter 到 Sepolia，并提交代码、截图和交易 Hash。
+合约可以先理解为“存放在链上的状态和修改规则”。本项目只有一个数字 `counter`：任何人都能读它，也能调用 `add(x)` 增加它。你会学会区分读数据和发交易。
 
-完整操作步骤见 [Counter 操作指南](USAGE.md)，包含 Foundry 安装、Forge 编译测试、Anvil 本地链、Cast 调用、钱包与测试币、Remix 部署以及 GitHub 和课程答案提交。
+## 用 0 → 5 → 8 理解状态变化
 
-2026-09-06 已使用现有 MetaMask 和已有测试币完成自转账、Remix 部署及 `add(5)`。三笔交易回执均成功，`get()` 从 `0` 变为 `5`。本次没有新建钱包或重复向水龙头领币。
+部署完成后 `counter = 0`。调用 `get()` 得到 0；调用 `add(5)` 成功后变成 5；再调用 `add(3)` 变成 8。其他账户读到的是同一个值，不是每个人各有一个计数器。
 
-[课程题目](https://learnblockchain.cn/quest/ffadfacf-91cf-4f69-bea3-12226bb8ecca/challenging)要求 `counter` 状态变量、`get()` 和 `add(x)`，答题框提交 **调用 `add(x)` 的交易浏览器链接**。
+`get()` 是读取，不改变链上状态；`add` 是写入，需要交易执行成功。提交交易、等待打包、回执成功、再次读取，是四个不同步骤。
 
-## 合约与本地验证
+## 先跑本地检查
 
-- `contracts/Counter.sol`：初始值为 0，任何账户都可以调用 `add(uint256 x)` 累加；`get()` 和自动生成的 `counter()` 均可读取当前值。
-- `add(0)` 保持原值；超过 `uint256` 上限时由 Solidity 回退，状态不变。
-- `test/Counter.t.sol`：一项可运行检查覆盖初始值、连续累加、加零、两个读取接口及溢出回退。
-- `foundry.toml`：Solidity `0.8.24`、EVM `shanghai`、不启用优化，不依赖第三方合约库。
-
-在本仓库根目录执行，需已安装 [Foundry](https://getfoundry.sh/introduction/installation/)：
+已安装 Foundry 时，在仓库根目录执行：
 
 ```bash
 forge fmt --root firstcontract-04 --check
 forge test --root firstcontract-04 -vv
 ```
 
-编译产物和缓存写入仓库的 `output-tdd/firstcontract/`，不属于提交材料。
+Forge 自带测试 EVM（执行合约的虚拟机），不用启动 Anvil，也不用钱包。测试检查初始值、连续累加、加零、读取接口及溢出回滚。2026-10-09 已通过此项 Forge 测试，并检查源码格式。
 
-## 钱包、测试币与转账
+## 再在 Remix VM 动手
 
-1. 使用现有 MetaMask，或通过现有 AppKit 页面选择兼容 EVM 的钱包；确认网络为 **Sepolia（chain ID 11155111）**。钱包创建、解锁及助记词备份由本人完成。
-2. 如需领币，从 [Ethereum 官方测试网与水龙头列表](https://ethereum.org/developers/docs/networks/#sepolia)选择水龙头，仅填写公开地址并按站点要求领取 Sepolia ETH。
-3. 向本人控制的地址转出一笔小额测试币，例如 `0.00001` Sepolia ETH；本次按用户授权向自身转账。签名前核对发送账户、收款地址、金额和 Gas；记录成功回执的交易 Hash。
-4. 若已有测试币和已完成的转账，可记录并核验已有证据，无需为截图重复领币或转账。
+1. 在 Remix 导入 [Counter.sol](contracts/Counter.sol)。编译器选 `0.8.24`，EVM 目标 `shanghai`，关闭优化，与 [foundry.toml](foundry.toml) 一致。
+2. 选 **Remix VM**，Value 保持 `0 Wei`，部署 `Counter`。这里用模拟账户，无需连接真实钱包。
+3. 调用 `get()`，预期 0；在 `add` 输入 5 并执行，交易成功后再读，预期 5。
+4. 再加 3，预期 8；加 0，仍为 8。一次失败交易不会留下部分加法结果。
 
-不要在此目录、GitHub、README 或截图中保存私钥、助记词和钱包密码。
+界面和课程交付的详细步骤见 [操作指南](USAGE.md)。第一次学习完成 VM 流程即可；Sepolia 是单独的公共测试网步骤。
 
-## 使用 Remix 部署与调用
+## 对照源码理解
 
-1. 打开 [Remix](https://remix.ethereum.org/)，使用独立工作区 `firstcontract`，创建 `contracts/Counter.sol` 并复制本目录同名文件内容。
-2. 在 Solidity Compiler 中选择 `0.8.24+commit.e11b9ed9`，EVM Version 为 `shanghai`，Optimization 不勾选，编译 `Counter.sol`。
-3. 在 Deploy & Run 中连接浏览器钱包或 WalletConnect，核对钱包与 Remix 都显示 Sepolia。选择 `Counter`，Value 为 `0 Wei`，点击 Deploy 并在钱包中确认部署交易。
-4. 等待部署成功，记录合约地址和部署交易 Hash。展开合约，调用 `get()`，初始值应为 `0`。
-5. 在 `add` 参数中输入 `5`，发送并确认交易；回执成功后再次调用 `get()`，值应为 `5`。记录 **这笔 add(5) 交易** 的 Hash。
-6. 截图应包括 Remix 编译结果、Sepolia 转账成功详情、部署成功详情，以及 `add(5)` 成功后读取的数值。Remix VM 本地模拟只能作为预演，不是 Sepolia 部署证据。
+[Counter.sol](contracts/Counter.sol) 只有三个要点：`uint256 public counter` 保存非负整数，并自动生成 `counter()` 读取接口；`get()` 也读取同一变量；`add(x)` 把旧值加 x 写回。
 
-连接与部署操作见 [Remix 官方说明](https://remix-ide.readthedocs.io/en/latest/run.html)；溢出行为见 [Solidity 0.8.24 官方说明](https://docs.soliditylang.org/en/v0.8.24/control-structures.html#checked-or-unchecked-arithmetic)。
+`uint256` 有上限。超过上限时 Solidity 0.8.24 会回滚，所以不会绕回 0。[Counter.t.sol](test/Counter.t.sol) 用测试验证这个边界。
 
-## 提交记录
+本项目当前没有 `script/` 部署入口；本地学习使用 Forge 测试或 Remix VM，不提供一条不存在的 `forge script` 命令。编译缓存位于仓库 `output-tdd/firstcontract/`。
+
+下面是历史公共链证据，不代表当前源码已经重新部署，也不代表本次有新的转账或签名授权。
+
+## 历史 Sepolia 记录（2026-09-06）
 
 以下为实际链上记录。钱包签名由本人确认，交易回执已用 Sepolia RPC 独立核对。
 
@@ -52,7 +46,7 @@ forge test --root firstcontract-04 -vv
 网络：Sepolia
 Chain ID：11155111
 钱包公开地址：0x000071424bb08b910f0786e04D964A63D64bF1Ba
-测试币来源：使用钱包已有 Sepolia ETH，本次未向水龙头领取
+测试币来源：使用钱包已有 Sepolia ETH，该次未向水龙头领取
 收款地址：0x000071424bb08b910f0786e04D964A63D64bF1Ba（自转账）
 转账金额（Sepolia ETH）：0.00001
 转账交易 Hash：0xafa85a4a18c98881464e64b040169e96d4ca614969641c03bec8f16db0a95d17
@@ -78,7 +72,7 @@ add(5) Gas 费用（Sepolia ETH）：0.000366696110868464
 - [已验证源码：Blockscout](https://eth-sepolia.blockscout.com/address/0x822A124B56f329D6B72aF26af75E2596d828E9Bc?tab=contract)
 - [已验证源码：Sourcify](https://repo.sourcify.dev/11155111/0x822A124B56f329D6B72aF26af75E2596d828E9Bc/)
 
-本次 `add(5)` 由 MetaMask 以 EIP-7702（type 4）交易执行，顶层交易的 `to` 是 `0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3`。已核对 [Blockscout 内部调用](https://eth-sepolia.blockscout.com/tx/0x243600974db99281b7b824532e81cbf629e328d024944d3150b6c357def29cd4)：它成功调用上面的 Counter；通过 RPC 读取区块 `11645593` 和 `11645594`，`get()` 分别返回 `0` 和 `5`。不要把顶层 `to` 地址误填成作业的 Counter 地址。
+该次 `add(5)` 由 MetaMask 以 EIP-7702（type 4）交易执行，顶层交易的 `to` 是 `0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3`。已核对 [Blockscout 内部调用](https://eth-sepolia.blockscout.com/tx/0x243600974db99281b7b824532e81cbf629e328d024944d3150b6c357def29cd4)：它成功调用上面的 Counter；通过 RPC 读取区块 `11645593` 和 `11645594`，`get()` 分别返回 `0` 和 `5`。不要把顶层 `to` 地址误填成作业的 Counter 地址。
 
 源码的链上完整运行字节码与本地 Foundry 编译结果一致。Remix 自动源码验证在 Blockscout、Sourcify 成功；Etherscan 因未配置 API key 跳过，Routescan 查询超时，均不影响已成功的部署。
 
@@ -107,4 +101,4 @@ Sepolia 部署成功：
 
 ![自转账成功](screenshots/04-sepolia-transfer.jpg)
 
-本目录使用现有仓库下的 [firstcontract 文件夹](https://github.com/woyaofei303/block-chain-list/tree/main/firstcontract-04)，不另建嵌套 Git 仓库。登链答题框填写上面的 `add(5)` 交易链接；本次未代为提交登链答题表单。
+本目录使用现有仓库下的 [firstcontract 文件夹](https://github.com/woyaofei303/block-chain-list/tree/main/firstcontract-04)，不另建嵌套 Git 仓库。登链答题框填写上面的 `add(5)` 交易链接；该次未代为提交登链答题表单。

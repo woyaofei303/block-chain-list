@@ -7,6 +7,8 @@ import {ERC20WithCallback} from "../src/ERC20WithCallback.sol";
 import {NFTMarket} from "../src/NFTMarket.sol";
 
 contract DeployNFTMarket is Script {
+    /// @notice 先部署支付币，再部署绑定已有 NFT 的市场；NFT_ADDRESS 必须属于目标网络。
+    /// 没有 --broadcast 时仅模拟；此脚本不创建 NFT 集合，也不替用户上架。
     function run() external returns (ERC20WithCallback token, NFTMarket market) {
         address nftAddress = vm.envAddress("NFT_ADDRESS");
 
