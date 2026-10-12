@@ -1,0 +1,23 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "../output-tdd/flash-swap-26/out"
+cache_path = "../output-tdd/flash-swap-26/cache"
+broadcast = "../output-tdd/flash-swap-26/broadcast"
+libs = ["../foundry-counter-09/lib", "../uniswap-v2-25"]
+auto_detect_remappings = false
+remappings = [
+    "forge-std/=../foundry-counter-09/lib/forge-std/src/",
+    "@openzeppelin/contracts/=../foundry-counter-09/lib/openzeppelin-contracts/contracts/",
+    "@uniswap/v2-core/contracts/=../uniswap-v2-25/src/core/",
+    "@uniswap/v2-periphery/contracts/=../uniswap-v2-25/src/periphery/"
+]
+solc_version = "0.8.24"
+evm_version = "shanghai"
+optimizer = true
+optimizer_runs = 200
+fs_permissions = [{ access = "read", path = "../output-tdd/uniswap-v2-25/out" }]
+
+[fuzz]
+runs = 256

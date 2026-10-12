@@ -52,6 +52,8 @@
 24. `vesting-24`：ERC20 Vesting，部署后 12 个月 Cliff，随后按完整月分 24 期解锁 100 万枚代币。读 [项目规则](vesting-24/AGENTS.md) 与 [README](vesting-24/README.md)。Foundry 的 forge-std / OpenZeppelin 固定在本项目 `lib/`，以 30 天为一个教学月，包含时间边界、回滚、重入、随机配额测试和本地 Anvil 部署核验。
 25. `uniswap-v2-25`：Uniswap V2 Core / Router02 源码分析与本地部署。读 [项目规则](uniswap-v2-25/AGENTS.md)、[README](uniswap-v2-25/README.md)、[源码解读](uniswap-v2-25/SOURCE_WALKTHROUGH.md) 与 [上游来源](uniswap-v2-25/UPSTREAM.md)。保留 Solidity 0.5.16 / 0.6.6，测试与脚本使用 0.8.24，复用 09 的 forge-std；本地重新计算 `pairFor` 创建字节码哈希，覆盖 LP、兑换、权限与回滚，只在独立 Anvil 验证。
 
+26. `flash-swap-26`：两个 MyToken、两套 Uniswap V2 Factory/Router 和双池闪电兑换。读 [项目规则](flash-swap-26/AGENTS.md) 与 [README](flash-swap-26/README.md)。Solidity 0.8.24，复用 09 的依赖和 25 的原版 V2 编译产物；覆盖回调认证、异币还款、最低利润与双池回滚。脚本支持 Anvil/Sepolia，实际广播状态以 README 与回执为准。
+
 ## 4. 新建项目的最小交付
 
 创建带编号的目录后，先写并读取该项目自己的 `AGENTS.md`，再开始业务实现。每个新项目至少包含：
