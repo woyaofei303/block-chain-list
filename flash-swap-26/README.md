@@ -2,7 +2,7 @@
 
 本练习部署两个自己的 `MyToken`、两套 Uniswap V2 Factory/Router，以及两个 A/B 池。策略从 PoolA 临时取出 A，在 PoolB 换成 B，再把应还的 B 转给 PoolA，剩余 B 转给部署者。全部发生在一笔交易中，任一步失败，两个池的兑换与代币转账一起回滚。
 
-题面要求在 **Sepolia** 执行，并提交代码库链接与成功日志。本项目提供相应脚本；本地 Anvil 的成功记录只能证明本地流程，不能冒充测试网证据。公共链实际状态见文末验证记录。
+题面要求在 **Sepolia** 执行，并提交代码库链接与成功日志。现已完成真实部署及闪电兑换，利润为 `93.519324040079252040 B`。可提交的交易链接、回执事件和地址见 [Sepolia 成功记录](SEPOLIA_EXECUTION.md)；本地 Anvil 与模拟结果单独保留。
 
 ## 用 100 A 走一遍
 
@@ -158,10 +158,10 @@ cast call "$TOKEN_B" 'balanceOf(address)(uint256)' "$FLASH_SWAP" --rpc-url "$RPC
 
 ## Sepolia 部署与作业提交
 
-准备好测试 ETH，在自己的终端中操作加密 keystore，密码不写入代码、聊天或命令参数。当前选用 `sepolia-deployer`。下列第一条命令会在本机提示解锁以获得公开地址；其后应确认地址、网络及费用预算。本地示例地址 `0xf39F…2266` 是私钥公开的 Anvil 默认账户，加密保存同一私钥也不能让它变成独占账户；若将它用于 Sepolia，任何人都可能支配账户资产及部署后的管理权限，只能用于不承载实际价值的测试。
+准备好测试 ETH，在自己的终端中操作加密 keystore，密码不写入代码、聊天或命令参数。本次改用 `sepolia-deployer-2`，公开地址为 `0xb103ea7790D7bF2a65AeD1CE72C799576288faC3`。下列命令会在本机提示解锁；使用自己的钱包时替换 keystore 名称及地址。本地示例地址 `0xf39F…2266` 的私钥公开，本次已确认该地址在 Sepolia 存在自动转走入账 ETH 的委托代码，不再用于部署或充值。
 
 ```bash
-cast wallet address --account sepolia-deployer
+cast wallet address --account sepolia-deployer-2
 ```
 
 将下面地址占位值换为该命令返回的公开地址。公共 RPC 不含密钥；也可换成自己的 Sepolia RPC，不要提交带令牌的 URL：
@@ -179,20 +179,26 @@ forge script script/DeployFlashSwap.s.sol:DeployFlashSwap \
   --rpc-url "$RPC_URL" --sender "$ACCOUNT" -vv
 ```
 
-网络必须是 `11155111`；最后一条只有模拟。核对模拟地址、gas 估算、账户资金和已授权费用范围后，才能实际签名广播。公共链不使用 `--unlocked`：
+网络必须是 `11155111`；最后一条只有模拟。核对账户资金和已授权费用范围后，才能实际签名广播。Sepolia 于 2026-10-06 启用 [Glamsterdam 升级](https://blog.ethereum.org/2026/09/17/glamsterdam-testnet-announcement)，创建代码和新状态的 gas 成本提高。本工程保留 Shanghai 编译目标；Foundry 1.8.1 的本地 gas 估算不能作为当前 Sepolia 的费用依据。
+
+以下广播命令在独立模拟之后使用 `--skip-simulation --slow`。[该版本 Foundry 的广播实现](https://github.com/foundry-rs/foundry/blob/982849d3140c01fd3b72905759581a132df7aa98/crates/script/src/broadcast.rs#L520) 会因此在每笔发送前调用节点的 `eth_estimateGas`，再乘以 200% 余量，并等待前一笔成功。不要省掉先前的模拟与预算检查。本次还用节点的 `eth_simulateV1` 连续模拟全部部署交易，验证升级后的执行与用量。下列 gas 单价上限为本次使用值，之后运行应重新核算；公共链不使用 `--unlocked`：
 
 ```bash
 forge script script/DeployFlashSwap.s.sol:DeployFlashSwap \
-  --rpc-url "$RPC_URL" --sender "$ACCOUNT" --account sepolia-deployer \
-  --broadcast --gas-estimate-multiplier 200 -vv
+  --rpc-url "$RPC_URL" --sender "$ACCOUNT" --account sepolia-deployer-2 \
+  --broadcast --skip-simulation --slow --gas-estimate-multiplier 200 \
+  --with-gas-price 2000000 --priority-gas-price 1000000 -vv
 ```
 
 执行前面“从实际广播记录提取地址”的整段命令；此时 `CHAIN_ID=11155111`，得到的是 Sepolia 地址。检查两池储备和报价，再执行套利：
 
 ```bash
 forge script script/ExecuteFlashSwap.s.sol:ExecuteFlashSwap \
-  --rpc-url "$RPC_URL" --sender "$ACCOUNT" --account sepolia-deployer \
-  --broadcast --gas-estimate-multiplier 200 -vvvv
+  --rpc-url "$RPC_URL" --sender "$ACCOUNT" -vvvv
+forge script script/ExecuteFlashSwap.s.sol:ExecuteFlashSwap \
+  --rpc-url "$RPC_URL" --sender "$ACCOUNT" --account sepolia-deployer-2 \
+  --broadcast --skip-simulation --slow --gas-estimate-multiplier 200 \
+  --with-gas-price 2000000 --priority-gas-price 1000000 -vvvv
 ```
 
 在自己的终端输入解锁密码，使用前一节的回执与回放命令保存最终证据；不要为了保存日志而把密码写进命令。控制台模拟输出不是实际成功回执的替代凭证。
@@ -200,7 +206,9 @@ forge script script/ExecuteFlashSwap.s.sol:ExecuteFlashSwap \
 作业提交两项：
 
 - **代码库链接**：[flash-swap-26](https://github.com/woyaofei303/block-chain-list/tree/main/flash-swap-26)。提交作业时也可使用包含本题的固定提交链接，避免后续修改影响所引用版本。
-- **Sepolia 成功日志**：上传 `receipt-11155111.json`、`replay-11155111.log`。写明两币、两个 Factory/Router、两池和策略地址，附 `https://sepolia.etherscan.io/tx/` 加上真实交易哈希，并说明借款、还款和利润。不要上传 `cache/`、keystore 或含凭据的 RPC 配置。
+- **Sepolia 成功日志**：[SEPOLIA_EXECUTION.md](SEPOLIA_EXECUTION.md)，包含真实交易链接、原始回执事件节选、转账路线、两池储备与费用；可直接随代码库提交。
+
+如果课程平台要求单独的附件，从本地日志目录上传 `receipt-11155111.json`、`replay-11155111.log`，并附上成功记录中的地址、交易哈希和利润。不要上传 `cache/`、keystore 或含凭据的 RPC 配置。
 
 ## 验证范围与限制
 
@@ -221,8 +229,8 @@ forge script script/ExecuteFlashSwap.s.sol:ExecuteFlashSwap \
 
 构建保留 7 条 lint 提示：1 条期限使用区块时间、2 条外部调用后发事件（其中一条是测试事件）、4 条有意忽略返回值（储备时间戳或测试用不到的报价）。本策略仅使用自己的普通 ERC20，Pair 自带锁；没有为消除提示而改动标准 V2 流程。Foundry 脚本还报告了依赖源码跟踪解析和临时 DeployHelper 产物提示，未阻止编译、部署或交易验证；25 号工程的既有 lint 提示保持原样。
 
-Sepolia RPC 部署模拟也已通过：生成 14 笔待签名交易，没有链上回执。在本次模拟的费率和 200% gas 估算余量下，预计需要 `0.000059160358236876 ETH`。模拟日志保存于 `output-tdd/flash-swap-26/deploy-sepolia-simulation.log`；其中的合约地址只是预测地址，不能作为已部署证明。
+**Sepolia 实测完成（2026-10-12）：** 使用授权的新账户 `sepolia-deployer-2`，14 笔部署及加池交易成功；闪电兑换交易 [`0xec0c…94fbe`](https://sepolia.etherscan.io/tx/0xec0ccff8a9b96104ebb104f028b3a3f44ff2ad85e31f5130854822970b294fbe) 在区块 `11899294` 成功，实际消耗 `622706 gas`，利润 `93.519324040079252040 B` 已转给部署者。
 
-**尚未完成：** Sepolia 广播及作业上传。用户已确认 `sepolia-deployer` 对应 `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`，并授权本次总 gas 支出不超过 `0.001` Sepolia 测试 ETH。本次只读查询余额为 `0.000000512180393081 ETH`，不足以完成部署；还需足额测试 ETH 和本机钱包解锁。费率、余额与账户 nonce 均会变化，广播前须重新核验。不应把本地或 RPC 模拟日志作为测试网成功交易提交。
+首次创建 TokenA 因旧 gas 估算不足失败，未留下合约。查询真实回执与 nonce 后，先用节点模拟全部 14 笔交易，再按节点逐笔估算广播。总费用包含这笔失败交易，共 `0.000170000364507585 Sepolia ETH`，低于授权的 `0.001 ETH`。已核对事件、两池储备与余额、部署者利润、策略零余额、LP、Factory/Router、供应量及授权余额，详见 [完整成功记录](SEPOLIA_EXECUTION.md)。原始运行文件仍在忽略目录，未向课程平台代交。
 
 本例人工建立价差，只适用于普通 ERC20、标准 V2 费率和固定 A → B 方向。合约仅允许部署者发起，最低利润与期限会阻止条件不符的执行；其他人仍可直接在公开池交易并消除价差。没有添加自动抢跑、路径搜索、无限授权、前端或通用资产托管功能。
