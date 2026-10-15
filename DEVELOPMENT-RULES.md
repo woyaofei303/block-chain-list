@@ -54,6 +54,7 @@
 
 26. `flash-swap-26`：两个 MyToken、两套 Uniswap V2 Factory/Router 和双池闪电兑换。读 [项目规则](flash-swap-26/AGENTS.md) 与 [README](flash-swap-26/README.md)。Solidity 0.8.24，复用 09 的依赖和 25 的原版 V2 编译产物；覆盖回调认证、异币还款、最低利润与双池回滚。脚本支持 Anvil/Sepolia，实际广播状态以 README 与回执为准。
 27. `staking-pool-27`：ETH 质押、每区块 10 KK 的累计收益分配，以及 Compound V2 cETH 利息加分版本。读 [项目规则](staking-pool-27/AGENTS.md) 与 [README](staking-pool-27/README.md)。Solidity 0.8.24，复用 09 的依赖；包含金额、权限、重入、回滚、随机测试与固定主网区块的本地 fork 测试，部署脚本只支持本地链。
+28. `rebase-token-28`：初始 1 亿枚、每个完整年度通缩 1% 的 ERC20。读 [项目规则](rebase-token-28/AGENTS.md) 与 [README](rebase-token-28/README.md)。Solidity 0.8.24，复用 09 的依赖；使用固定内部份额实现余额换算，覆盖漏年补算、转账授权、舍入、回滚和随机测试，部署脚本仅支持本地链。
 
 ## 4. 新建项目的最小交付
 

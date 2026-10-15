@@ -1,0 +1,24 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "../output-tdd/rebase-token-28/out"
+cache_path = "../output-tdd/rebase-token-28/cache"
+broadcast = "../output-tdd/rebase-token-28/broadcast"
+libs = ["../foundry-counter-09/lib"]
+auto_detect_remappings = false
+remappings = [
+    "forge-std/=../foundry-counter-09/lib/forge-std/src/",
+    "@openzeppelin/contracts/=../foundry-counter-09/lib/openzeppelin-contracts/contracts/"
+]
+solc_version = "0.8.24"
+evm_version = "shanghai"
+optimizer = true
+optimizer_runs = 200
+
+[fuzz]
+runs = 256
+
+[lint]
+# 测试有意伪造账户、制造失败交易、循环调用；由行为断言验证，lint 保留在源码与部署脚本上。
+ignore = ["test/RebaseToken.t.sol"]

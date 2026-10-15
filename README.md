@@ -54,6 +54,7 @@ ETH 最小单位叫 Wei，`1 ETH = 10^18 Wei`。ERC20 的精度由各自合约�
 25. [25 Uniswap V2](uniswap-v2-25/README.md)：加双币、兑换、交还 LP，沿资产变化理解自动兑换。
 26. [26 闪电兑换](flash-swap-26/README.md)：从 PoolA 借 A，在 PoolB 换 B 并还款，核对双池价差、手续费与交易回滚。
 27. [27 ETH 质押与 KK 奖励](staking-pool-27/README.md)：按区块和本金占比分配 KK，再把 ETH 存入 cETH，分清本金、奖励和借贷利息。
+28. [28 Rebase 通缩 Token](rebase-token-28/README.md)：初始发行 1 亿枚，每年缩减 1%，通过固定内部份额统一更新用户余额。
 
 `tokenbankv2-08` 保留历史名称，实际讲 NFTMarket；不要根据目录名寻找 TokenBank 页面。
 
