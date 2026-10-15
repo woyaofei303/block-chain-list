@@ -53,6 +53,7 @@ ETH 最小单位叫 Wei，`1 ETH = 10^18 Wei`。ERC20 的精度由各自合约�
 24. [24 Vesting 分期解锁](vesting-24/README.md)：12 个月等待、24 期领取，区分累计解锁与本次可领。
 25. [25 Uniswap V2](uniswap-v2-25/README.md)：加双币、兑换、交还 LP，沿资产变化理解自动兑换。
 26. [26 闪电兑换](flash-swap-26/README.md)：从 PoolA 借 A，在 PoolB 换 B 并还款，核对双池价差、手续费与交易回滚。
+27. [27 ETH 质押与 KK 奖励](staking-pool-27/README.md)：按区块和本金占比分配 KK，再把 ETH 存入 cETH，分清本金、奖励和借贷利息。
 
 `tokenbankv2-08` 保留历史名称，实际讲 NFTMarket；不要根据目录名寻找 TokenBank 页面。
 

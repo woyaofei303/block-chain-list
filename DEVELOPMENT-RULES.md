@@ -53,6 +53,7 @@
 25. `uniswap-v2-25`：Uniswap V2 Core / Router02 源码分析与本地部署。读 [项目规则](uniswap-v2-25/AGENTS.md)、[README](uniswap-v2-25/README.md)、[源码解读](uniswap-v2-25/SOURCE_WALKTHROUGH.md) 与 [上游来源](uniswap-v2-25/UPSTREAM.md)。保留 Solidity 0.5.16 / 0.6.6，测试与脚本使用 0.8.24，复用 09 的 forge-std；本地重新计算 `pairFor` 创建字节码哈希，覆盖 LP、兑换、权限与回滚，只在独立 Anvil 验证。
 
 26. `flash-swap-26`：两个 MyToken、两套 Uniswap V2 Factory/Router 和双池闪电兑换。读 [项目规则](flash-swap-26/AGENTS.md) 与 [README](flash-swap-26/README.md)。Solidity 0.8.24，复用 09 的依赖和 25 的原版 V2 编译产物；覆盖回调认证、异币还款、最低利润与双池回滚。脚本支持 Anvil/Sepolia，实际广播状态以 README 与回执为准。
+27. `staking-pool-27`：ETH 质押、每区块 10 KK 的累计收益分配，以及 Compound V2 cETH 利息加分版本。读 [项目规则](staking-pool-27/AGENTS.md) 与 [README](staking-pool-27/README.md)。Solidity 0.8.24，复用 09 的依赖；包含金额、权限、重入、回滚、随机测试与固定主网区块的本地 fork 测试，部署脚本只支持本地链。
 
 ## 4. 新建项目的最小交付
 
