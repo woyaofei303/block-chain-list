@@ -1,0 +1,24 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "../output-tdd/call-option-29/out"
+cache_path = "../output-tdd/call-option-29/cache"
+broadcast = "../output-tdd/call-option-29/broadcast"
+libs = ["../foundry-counter-09/lib"]
+auto_detect_remappings = false
+remappings = [
+    "forge-std/=../foundry-counter-09/lib/forge-std/src/",
+    "@openzeppelin/contracts/=../foundry-counter-09/lib/openzeppelin-contracts/contracts/"
+]
+solc_version = "0.8.24"
+evm_version = "shanghai"
+optimizer = true
+optimizer_runs = 200
+
+[fuzz]
+runs = 256
+
+[lint]
+# 测试故意制造失败调用与异常代币；生产逻辑和脚本仍参与 lint。
+ignore = ["test/**/*.sol"]
