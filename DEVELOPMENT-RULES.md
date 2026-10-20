@@ -56,6 +56,7 @@
 27. `staking-pool-27`：ETH 质押、每区块 10 KK 的累计收益分配，以及 Compound V2 cETH 利息加分版本。读 [项目规则](staking-pool-27/AGENTS.md) 与 [README](staking-pool-27/README.md)。Solidity 0.8.24，复用 09 的依赖；包含金额、权限、重入、回滚、随机测试与固定主网区块的本地 fork 测试，部署脚本只支持本地链。
 28. `rebase-token-28`：初始 1 亿枚、每个完整年度通缩 1% 的 ERC20。读 [项目规则](rebase-token-28/AGENTS.md) 与 [README](rebase-token-28/README.md)。Solidity 0.8.24，复用 09 的依赖；使用固定内部份额实现余额换算，覆盖漏年补算、转账授权、舍入、回滚和随机测试，部署脚本仅支持本地链。
 29. `call-option-29`：ETH 全额抵押的 ERC20 看涨期权，固定行权价与 UTC 到期日。读 [项目规则](call-option-29/AGENTS.md) 与 [README](call-option-29/README.md)。Solidity 0.8.24，复用 09 的依赖；包含 USDT 行权、失败回滚、分批真实销毁、随机测试与本地模拟截图，部署脚本仅支持本地链。
+30. `token-governance-30`：ERC20Votes 历史票权与 Governor 治理 Bank 的 ETH 支出。读 [项目规则](token-governance-30/AGENTS.md) 与 [README](token-governance-30/README.md)。Solidity 0.8.28 / Cancun，复用 09 的依赖；包含提案、投票、执行、快照、权限、重入、回滚和随机测试，部署脚本仅支持本地链。
 
 ## 4. 新建项目的最小交付
 
