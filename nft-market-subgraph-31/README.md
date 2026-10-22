@@ -1,6 +1,6 @@
 # 31 · 用 The Graph 查 NFTMarket 的上架与成交
 
-这份练习把 [08 的 NFTMarket](../tokenbankv2-08/src/NFTMarket.sol) 的事件变成可以关联查询的数据。题目要求部署到 Sepolia、索引上架和成交，并提交 GitHub 链接及查询截图。当前已完成代码、测试及 **Sepolia 的 8 笔部署和演示交易**，NFTMarket 源码已在 Sourcify 精确匹配验证。**Studio 尚未部署，未推送 GitHub，也没有真实 GraphQL 查询截图**。
+这份练习把 [08 的 NFTMarket](../tokenbankv2-08/src/NFTMarket.sol) 的事件变成可以关联查询的数据。当前已完成 **Sepolia 的 8 笔部署和演示交易、三个合约的源码验证、Studio 子图部署与真实查询截图**。查询得到 1 条 `List` 和 1 条 `Sold`，关联与链上回执一致，没有索引错误。代码、公开部署记录、查询响应和截图均保存在本目录，作业提交链接见下文。
 
 题目引用的 [NFTMarket 页面](https://decert.me/quests/abdbc346-8314-4394-8f97-8732780602ed)本次未能读取正文，因此合约行为以仓库 08 的实际实现为准。它的事件叫 `NFTListed`、`NFTSold`；子图里的实体叫 `List`、`Sold`，二者不必同名。
 
@@ -167,30 +167,56 @@ cast call "$TOKEN" 'allowance(address,address)(uint256)' "$ACCOUNT" "$MARKET" --
 
 广播前的 `eth_simulateV1` 连续模拟全部成功。节点部署 gas 约为 Foundry 原估算的 5 倍，因此使用 900% 的 gas multiplier、1,000,000 wei 的 max fee/priority fee 后再次核验；8 笔 gas limit 对应费用上界为 0.000026871327 ETH。该上界与上面的实际费用不同；未来重新部署必须重新核对 RPC、nonce、余额和具体授权，不能照搬旧参数。
 
-在 [Subgraph Studio](https://thegraph.com/studio/) 创建 Sepolia 子图。钱包连接/签名及页面条款由本人确认；部署密钥只在本机输入。新检出仓库先生成配置，本机已生成 `subgraph.sepolia.yaml` 时跳过第一条，脚本拒绝覆盖已有配置：
+本次已在 [Subgraph Studio](https://thegraph.com/studio/subgraph/nft-market-subgraph-31) 部署 `nft-market-subgraph-31` 的 `v0.0.1`，部署 ID 为 `QmPD96PkbBScxKFp9gM3eX6Lzn2htj7n545Hpu87fPeAZ1`。钱包登录和密钥认证由操作者在本机完成，密钥没有写入仓库。
+
+以下为部署过程的复现命令，当前版本已部署，无需再运行。新检出仓库先生成配置，本机已生成 `subgraph.sepolia.yaml` 时跳过第一条，脚本拒绝覆盖已有配置。部署密钥仅在终端提示中输入；更新代码后使用新的版本标签：
 
 ```bash
 npm run configure -- sepolia "$MARKET" "$START_BLOCK"
 npx graph auth
-npx graph deploy 你的Studio子图名称 subgraph.sepolia.yaml --version-label v0.0.1
+npx graph deploy nft-market-subgraph-31 subgraph.sepolia.yaml --version-label v0.0.1
 ```
 
-本项目固定的 Graph CLI 0.98.1 不再使用 `--studio` 选项，默认部署到 Studio。等待同步后，在 Studio Playground 执行 `queries/market.graphql`，确认上架与成交关联，然后截取真实结果。不要截入 deploy key 或带访问密钥的 URL。
+本项目固定的 Graph CLI 0.98.1 不再使用 `--studio` 选项，默认部署到 Studio。本次部署的是 Studio 开发查询版本，没有执行向去中心化网络的 Publish 操作。
 
-正式提交还需要：
+## 已验证的查询与截图
 
-- 将本项目及引用源码提交/推送到 GitHub，得到实际可访问的仓库或目录链接；当前远程是 `woyaofei303/block-chain-list`，本次尚未推送。
-- 记录 Studio 子图名称和可分享的查询入口，把真实 Sepolia 截图放在 `screenshots/` 并链接。
+打开 [The GraphiQL 查询页面](https://api.studio.thegraph.com/query/1763608/nft-market-subgraph-31/v0.0.1/graphql)，粘贴 [完整双向关联查询](queries/market.graphql) 后点击运行。HTTP 查询端点为：
+
+```text
+https://api.studio.thegraph.com/query/1763608/nft-market-subgraph-31/v0.0.1
+```
+
+也可直接执行下面的只读查询，无需钱包签名或部署密钥：
+
+```bash
+curl --fail-with-body --silent --show-error \
+  https://api.studio.thegraph.com/query/1763608/nft-market-subgraph-31/v0.0.1 \
+  -H 'Content-Type: application/json' \
+  --data '{"query":"{ _meta { block { number } hasIndexingErrors } solds { buyer price fee list { tokenId price status } } }"}'
+```
+
+本次 [完整响应快照](queries/sepolia-response.json) 的索引区块为 `11969643`，已经超过成交区块 `11969555`。实际返回 1 条上架和 1 条成交；核对了 `Sold.list.id == List.id`、`List.sales[0].id == Sold.id`、交易哈希、日志序号、买卖账户、价格、NFT 地址和元数据，均与链上记录一致。上架状态为 `SOLD`，成交价格为 100 BERC20，手续费为零，`hasIndexingErrors` 为 `false`。
+
+下面截图来自上述真实端点的 GraphiQL 页面，使用 [精简截图查询](queries/sepolia-proof.graphql)，截图时索引到区块 `11969651`。`solds.list` 展示成交关联的上架记录；截图未修改查询结果，也不包含部署密钥。
+
+![Sepolia 的 Sold 与 List 关联查询](screenshots/sepolia-list-sold.jpg)
+
+作业提交资料：
+
+- [GitHub 项目源码](https://github.com/woyaofei303/block-chain-list/tree/main/nft-market-subgraph-31)。复现时克隆整个仓库，以保留 08 的合约和 09 的依赖。
+- [真实查询截图](screenshots/sepolia-list-sold.jpg)，对应 [可复制查询](queries/sepolia-proof.graphql)。
 
 ## 本次验证与限制（2026-10-22）
 
 - Matchstick 映射测试 7 项通过；配置校验 2 项通过；Forge 合约测试 5 项通过（含本次新增的自买、余额保持和授权耗尽验证）。
 - Graph 类型生成和 WASM 构建通过；Node TypeScript strict 检查通过。
-- 开发阶段曾在临时 Git index 上完整执行共享 pre-commit，覆盖新项目检查；本地提交仍须执行正常提交钩子，GitHub 尚未推送。目录索引、文档链接、ABI 与合约一致性检查通过。
+- 共享 pre-commit 在临时 Git index 和正常本地提交中均已执行通过，覆盖新项目检查。目录索引、文档链接、ABI 与合约一致性检查通过。
 - 部署脚本本地模拟通过；独立 Anvil 实际部署、改价、普通成交和回调转售通过，结束已关闭测试节点。
 - Sepolia 的 8 笔广播交易已从 RPC 独立查询回执并确认成功；费用、事件主题、tokenId、价格、买卖账户、挂单清除、授权归零及合约绑定地址检查通过。
 - 使用真实地址和起始区块的 `subgraph.sepolia.yaml` 构建通过；三个合约的 Sourcify 源码验证均为 `exact_match`。
-- Docker Compose 配置校验通过，但 Docker 镜像存储返回 `input/output error`，无法启动 Graph Node；端到端索引、GraphQL 响应和截图均未验证。
+- Studio `v0.0.1` 部署成功；真实 Sepolia 索引、HTTP GraphQL 查询、双向关联及截图均已验证。
+- Docker Compose 配置校验通过，但本机 Docker 镜像存储返回 `input/output error`，本地 Graph Node 仍未启动；上述端到端验证使用 Studio，不依赖本机 Docker。
 - Foundry 模拟/集成日志有 trace 源码解析及未配置 Etherscan 的告警；实际源码验证另用 Sourcify 完成，未验证 Etherscan 同步状态。
 - `npm audit` 报告 Graph CLI 工具依赖中的 21 项漏洞（5 moderate、15 high、1 critical）；兼容范围内的 `npm audit fix` 未消除，未强制降级工具或引入未经验证的替换。不要用这套 CLI 解包不可信工程；上线前需复核上游修复。
 - 原始日志位于仓库 `output-tdd/nft-market-subgraph-31/`，不随源码提交。没有把本地事件、模板地址或预期结果当作 Sepolia 证据。

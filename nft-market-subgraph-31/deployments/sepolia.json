@@ -123,5 +123,18 @@
     }
   ],
   "demo": "同一账户上架并自买，仅用于产生真实索引事件。",
-  "indexingStatus": "Studio 尚未部署，以上是链上回执，不是 GraphQL 查询结果。"
+  "indexingStatus": "Studio v0.0.1 已部署；真实查询返回 1 条 List 和 1 条 Sold，双向关联一致，无索引错误。",
+  "subgraph": {
+    "slug": "nft-market-subgraph-31",
+    "version": "v0.0.1",
+    "deploymentId": "QmPD96PkbBScxKFp9gM3eX6Lzn2htj7n545Hpu87fPeAZ1",
+    "studioUrl": "https://thegraph.com/studio/subgraph/nft-market-subgraph-31",
+    "queryUrl": "https://api.studio.thegraph.com/query/1763608/nft-market-subgraph-31/v0.0.1",
+    "queriedBlock": 11969643,
+    "hasIndexingErrors": false,
+    "responseSnapshot": "queries/sepolia-response.json",
+    "screenshot": "screenshots/sepolia-list-sold.jpg",
+    "screenshotQuery": "queries/sepolia-proof.graphql",
+    "screenshotBlock": 11969651
+  }
 }

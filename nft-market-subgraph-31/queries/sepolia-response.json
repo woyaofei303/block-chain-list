@@ -1,0 +1,47 @@
+{
+  "data": {
+    "lists": [
+      {
+        "id": "0xae4c685bbf26c8d788f1ce5f000c43b976933be1f0f8c311a18dbcb32c3d57c80d000000",
+        "nft": "0xd260f00552cb98c07efb7b78b3c4152a6d2c28b9",
+        "tokenId": "1",
+        "tokenURL": "data:application/json;utf8,{\"name\":\"Graph Market Demo #1\",\"description\":\"Sepolia self-purchase indexing demo\"}",
+        "seller": "0xb103ea7790d7bf2a65aed1ce72c799576288fac3",
+        "payToken": "0xe3b11599cc0354f36b3f337ed8568f4378b1b046",
+        "price": "100000000000000000000",
+        "status": "SOLD",
+        "filledTxHash": "0x741c58c19536030f157d6eea6d2505de4848cea4bc7d6fcc7f01fae46252c628",
+        "sales": [
+          {
+            "id": "0x741c58c19536030f157d6eea6d2505de4848cea4bc7d6fcc7f01fae46252c62857000000",
+            "buyer": "0xb103ea7790d7bf2a65aed1ce72c799576288fac3",
+            "transactionHash": "0x741c58c19536030f157d6eea6d2505de4848cea4bc7d6fcc7f01fae46252c628"
+          }
+        ]
+      }
+    ],
+    "solds": [
+      {
+        "id": "0x741c58c19536030f157d6eea6d2505de4848cea4bc7d6fcc7f01fae46252c62857000000",
+        "buyer": "0xb103ea7790d7bf2a65aed1ce72c799576288fac3",
+        "price": "100000000000000000000",
+        "fee": "0",
+        "transactionHash": "0x741c58c19536030f157d6eea6d2505de4848cea4bc7d6fcc7f01fae46252c628",
+        "list": {
+          "id": "0xae4c685bbf26c8d788f1ce5f000c43b976933be1f0f8c311a18dbcb32c3d57c80d000000",
+          "tokenId": "1",
+          "seller": "0xb103ea7790d7bf2a65aed1ce72c799576288fac3",
+          "price": "100000000000000000000",
+          "transactionHash": "0xae4c685bbf26c8d788f1ce5f000c43b976933be1f0f8c311a18dbcb32c3d57c8"
+        }
+      }
+    ],
+    "_meta": {
+      "block": {
+        "number": 11969643,
+        "hash": "0x86690bc76ad9a4d9ce107bab3b96c066689cec24054b272dc7f29a8f25174386"
+      },
+      "hasIndexingErrors": false
+    }
+  }
+}

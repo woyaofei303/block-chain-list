@@ -1,6 +1,9 @@
 {
   _meta {
-    block { number hash }
+    block {
+      number
+      hash
+    }
     hasIndexingErrors
   }
   lists(first: 10, orderBy: blockNumber, orderDirection: desc) {
@@ -13,7 +16,11 @@
     price
     status
     filledTxHash
-    sales { id buyer transactionHash }
+    sales {
+      id
+      buyer
+      transactionHash
+    }
   }
   solds(first: 10, orderBy: blockNumber, orderDirection: desc) {
     id
@@ -21,6 +28,12 @@
     price
     fee
     transactionHash
-    list { id tokenId seller price transactionHash }
+    list {
+      id
+      tokenId
+      seller
+      price
+      transactionHash
+    }
   }
 }

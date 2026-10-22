@@ -1,0 +1,19 @@
+query Sepolia_NFTMarket {
+  _meta {
+    block {
+      number
+    }
+    hasIndexingErrors
+  }
+  solds(first: 5) {
+    buyer
+    price
+    fee
+    list {
+      nft
+      tokenId
+      price
+      status
+    }
+  }
+}

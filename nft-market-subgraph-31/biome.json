@@ -5,6 +5,7 @@
       "scripts/**/*.ts",
       "tests/**/*.ts",
       "deployments/*.json",
+      "queries/*.{graphql,json}",
       "*.json",
       "*.graphql",
       "!package-lock.json"
