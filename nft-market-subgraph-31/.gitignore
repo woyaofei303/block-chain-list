@@ -1,0 +1,15 @@
+node_modules/
+generated/
+build/
+out/
+cache/
+broadcast/
+.env
+.env.*
+!.env.example
+tests/.bin/
+tests/.latest.json
+subgraph.local.yaml
+subgraph.sepolia.yaml
+networks.local.json
+!package-lock.json

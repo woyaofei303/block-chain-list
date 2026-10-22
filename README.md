@@ -57,6 +57,7 @@ ETH 最小单位叫 Wei，`1 ETH = 10^18 Wei`。ERC20 的精度由各自合约�
 28. [28 Rebase 通缩 Token](rebase-token-28/README.md)：初始发行 1 亿枚，每年缩减 1%，通过固定内部份额统一更新用户余额。
 29. [29 ETH 看涨期权](call-option-29/README.md)：ETH 全额抵押发行 ERC20 期权，到期日支付 USDT 行权并销毁，过期后分批销毁剩余期权、取回抵押。
 30. [30 Token 投票治理](token-governance-30/README.md)：委托 GTK 形成历史票权，通过提案、投票和执行，让 Gov 管理 Bank 的 ETH 支出。
+31. [31 The Graph NFT 市场索引](nft-market-subgraph-31/README.md)：保留每次上架记录，把成交关联到正确报价，并用 GraphQL 查询交易历史。
 
 `tokenbankv2-08` 保留历史名称，实际讲 NFTMarket；不要根据目录名寻找 TokenBank 页面。
 

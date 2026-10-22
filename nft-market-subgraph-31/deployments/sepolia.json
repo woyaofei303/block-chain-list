@@ -1,0 +1,127 @@
+{
+  "chainId": 11155111,
+  "network": "sepolia",
+  "account": "0xb103ea7790d7bf2a65aed1ce72c799576288fac3",
+  "contracts": {
+    "DemoNFT": {
+      "address": "0xd260f00552cb98c07efb7b78b3c4152a6d2c28b9",
+      "transactionHash": "0x437981e4e78d50c48ff790f51fa52e5fad5e43dbb074fdf6a995511bbb678c36",
+      "blockNumber": 11969541,
+      "sourceVerification": {
+        "provider": "Sourcify",
+        "status": "exact_match",
+        "url": "https://sourcify.dev/server/verify-ui/jobs/8a5f4777-080a-40de-b5bb-9d7d8146b620"
+      }
+    },
+    "ERC20WithCallback": {
+      "address": "0xe3b11599cc0354f36b3f337ed8568f4378b1b046",
+      "transactionHash": "0x5e0c90d33f539aab51705db46c47791785be6d108a89893f2b2c06647139c78d",
+      "blockNumber": 11969543,
+      "sourceVerification": {
+        "provider": "Sourcify",
+        "status": "exact_match",
+        "url": "https://sourcify.dev/server/verify-ui/jobs/3d2e4232-84a7-4c50-9dab-11178f5ef575"
+      }
+    },
+    "NFTMarket": {
+      "address": "0x020e0284771258816d989a36adfc7abf620865e2",
+      "transactionHash": "0x889c5f84076d96a9a6159d7198056c709d6a3d9824971b9e1eda777ec7c69c2f",
+      "blockNumber": 11969545,
+      "sourceVerification": {
+        "provider": "Sourcify",
+        "status": "exact_match",
+        "url": "https://sourcify.dev/server/verify-ui/jobs/f8e32654-6fcb-4831-b6f3-b41e8abcc326"
+      }
+    }
+  },
+  "startBlock": 11969545,
+  "gasFeeWei": "18608277000000",
+  "gasFeeETH": "0.000018608277",
+  "authorizedGasBudgetWei": "1000000000000000",
+  "transactions": [
+    {
+      "action": "deploy DemoNFT",
+      "hash": "0x437981e4e78d50c48ff790f51fa52e5fad5e43dbb074fdf6a995511bbb678c36",
+      "blockNumber": 11969541,
+      "status": 1,
+      "gasUsed": "8050509",
+      "effectiveGasPriceWei": "1000000"
+    },
+    {
+      "action": "deploy ERC20WithCallback",
+      "hash": "0x5e0c90d33f539aab51705db46c47791785be6d108a89893f2b2c06647139c78d",
+      "blockNumber": 11969543,
+      "status": 1,
+      "gasUsed": "4510488",
+      "effectiveGasPriceWei": "1000000"
+    },
+    {
+      "action": "deploy NFTMarket",
+      "hash": "0x889c5f84076d96a9a6159d7198056c709d6a3d9824971b9e1eda777ec7c69c2f",
+      "blockNumber": 11969545,
+      "status": 1,
+      "gasUsed": "4779183",
+      "effectiveGasPriceWei": "1000000"
+    },
+    {
+      "action": "mint(address,uint256,string)",
+      "hash": "0x07d5860f9dc1ad308b2c1fb0a8f865a0c5da71e551469c6b2deb7cf2ac8d39c4",
+      "blockNumber": 11969547,
+      "status": 1,
+      "gasUsed": "793400",
+      "effectiveGasPriceWei": "1000000"
+    },
+    {
+      "action": "approve(address,uint256)",
+      "hash": "0x652816eabb779e36a8140c193e8f58b5250daca7ddbf1d9a09003f9f78f47066",
+      "blockNumber": 11969549,
+      "status": 1,
+      "gasUsed": "130661",
+      "effectiveGasPriceWei": "1000000"
+    },
+    {
+      "action": "list(uint256,uint256)",
+      "hash": "0xae4c685bbf26c8d788f1ce5f000c43b976933be1f0f8c311a18dbcb32c3d57c8",
+      "blockNumber": 11969551,
+      "status": 1,
+      "gasUsed": "137284",
+      "effectiveGasPriceWei": "1000000"
+    },
+    {
+      "action": "approve(address,uint256)",
+      "hash": "0x4d14e9463d4013fe7ce7fe5b9cdc61f0c21cb631aa350d63e3f28de29fc7145a",
+      "blockNumber": 11969553,
+      "status": 1,
+      "gasUsed": "128103",
+      "effectiveGasPriceWei": "1000000"
+    },
+    {
+      "action": "buyNFT(uint256)",
+      "hash": "0x741c58c19536030f157d6eea6d2505de4848cea4bc7d6fcc7f01fae46252c628",
+      "blockNumber": 11969555,
+      "status": 1,
+      "gasUsed": "78649",
+      "effectiveGasPriceWei": "1000000"
+    }
+  ],
+  "events": [
+    {
+      "event": "NFTListed",
+      "transactionHash": "0xae4c685bbf26c8d788f1ce5f000c43b976933be1f0f8c311a18dbcb32c3d57c8",
+      "blockNumber": 11969551,
+      "logIndex": 13,
+      "tokenId": "1",
+      "price": "100000000000000000000"
+    },
+    {
+      "event": "NFTSold",
+      "transactionHash": "0x741c58c19536030f157d6eea6d2505de4848cea4bc7d6fcc7f01fae46252c628",
+      "blockNumber": 11969555,
+      "logIndex": 87,
+      "tokenId": "1",
+      "price": "100000000000000000000"
+    }
+  ],
+  "demo": "同一账户上架并自买，仅用于产生真实索引事件。",
+  "indexingStatus": "Studio 尚未部署，以上是链上回执，不是 GraphQL 查询结果。"
+}

@@ -1,0 +1,47 @@
+enum ListStatus {
+  LISTED
+  REPLACED
+  SOLD
+}
+
+# 成交或改价后需要更新，因此不能标为 immutable: true。
+type List @entity(immutable: false) {
+  id: Bytes!
+  market: Bytes!
+  nft: Bytes!
+  tokenId: BigInt!
+  tokenURL: String
+  seller: Bytes!
+  payToken: Bytes!
+  price: BigInt!
+  # 0 表示此合约没有截止日期。
+  deadline: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  # 本合约无取消入口，保持 null。
+  cancelTxHash: Bytes
+  filledTxHash: Bytes
+  status: ListStatus!
+  sales: [Sold!]! @derivedFrom(field: "list")
+}
+
+type Sold @entity(immutable: true) {
+  id: Bytes!
+  buyer: Bytes!
+  # 此市场不收手续费，固定为 0。
+  fee: BigInt!
+  price: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  list: List!
+}
+
+# market + 完整 tokenId 定位当前挂单；成交后删除，不代替历史 List。
+type ActiveListing @entity(immutable: false) {
+  id: String!
+  list: List!
+}

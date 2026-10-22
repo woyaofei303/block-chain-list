@@ -1,0 +1,26 @@
+{
+  _meta {
+    block { number hash }
+    hasIndexingErrors
+  }
+  lists(first: 10, orderBy: blockNumber, orderDirection: desc) {
+    id
+    nft
+    tokenId
+    tokenURL
+    seller
+    payToken
+    price
+    status
+    filledTxHash
+    sales { id buyer transactionHash }
+  }
+  solds(first: 10, orderBy: blockNumber, orderDirection: desc) {
+    id
+    buyer
+    price
+    fee
+    transactionHash
+    list { id tokenId seller price transactionHash }
+  }
+}

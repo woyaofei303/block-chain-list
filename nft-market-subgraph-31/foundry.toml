@@ -1,0 +1,13 @@
+[profile.default]
+src = "contracts"
+test = "test"
+script = "script"
+out = "../output-tdd/nft-market-subgraph-31/out"
+cache_path = "../output-tdd/nft-market-subgraph-31/cache"
+broadcast = "../output-tdd/nft-market-subgraph-31/broadcast"
+libs = ["../foundry-counter-09/lib", "../tokenbankv2-08/src"]
+solc_version = "0.8.24"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+remappings = ["market08/=../tokenbankv2-08/src/", "forge-std/=../foundry-counter-09/lib/forge-std/src/", "@openzeppelin/contracts/=../foundry-counter-09/lib/openzeppelin-contracts/contracts/"]
